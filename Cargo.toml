@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/protocol"]
+members = ["crates/protocol", "crates/me"]
 
 [workspace.dependencies]
 # Layered Rust errors that preserve the typed value across transformations.
