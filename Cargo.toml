@@ -1,0 +1,8 @@
+[workspace]
+resolver = "3"
+members = ["crates/protocol"]
+
+[workspace.dependencies]
+# Layered Rust errors that preserve the typed value across transformations.
+# Crates inside the workspace opt in via `error-stack.workspace = true`.
+error-stack = "=0.7.1"
