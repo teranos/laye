@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/protocol", "crates/me", "crates/net", "crates/bevy-libp2p", "crates/relaye", "crates/bevy-observability"]
+members = ["crates/protocol", "crates/me", "crates/net", "crates/bevy-libp2p", "crates/relaye", "crates/bevy-observability", "crates/bevy-drawer"]
 
 [workspace.dependencies]
 # Layered Rust errors that preserve the typed value across transformations.
