@@ -3,11 +3,17 @@ use bevy::camera::Hdr;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::WindowPlugin;
+use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
+
+const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
+
+#[derive(Component)]
+struct Player;
 
 pub fn build_and_run_app() {
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::srgb(0.01, 0.02, 0.05)))
-        .add_plugins(
+        .add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
@@ -23,8 +29,11 @@ pub fn build_and_run_app() {
                     meta_check: AssetMetaCheck::Never,
                     ..default()
                 }),
-        )
-        .add_systems(Startup, setup_scene);
+            InputCapturePlugin,
+            DefaultBindingsPlugin,
+        ))
+        .add_systems(Startup, setup_scene)
+        .add_systems(Update, (move_player_on_wasd, follow_player_with_camera).chain());
     app.run();
 }
 
@@ -37,7 +46,7 @@ fn setup_scene(
         Camera3d::default(),
         Hdr,
         Bloom::default(),
-        Transform::from_xyz(0.0, 12.0, 16.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_translation(CAMERA_OFFSET).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     commands.spawn((
@@ -70,8 +79,51 @@ fn setup_scene(
         ..default()
     });
     commands.spawn((
+        Player,
         Mesh3d(player_mesh),
         MeshMaterial3d(player_mat),
         Transform::from_xyz(0.0, 0.6, 0.0),
     ));
+}
+
+fn move_player_on_wasd(
+    keys: Res<ButtonInput<KeyCode>>,
+    cap: Res<InputCapture>,
+    time: Res<Time>,
+    mut players: Query<&mut Transform, With<Player>>,
+) {
+    if cap.is_captured() {
+        return;
+    }
+    let mut delta = Vec3::ZERO;
+    if keys.pressed(KeyCode::KeyW) {
+        delta.z -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        delta.z += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        delta.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        delta.x += 1.0;
+    }
+    if delta == Vec3::ZERO {
+        return;
+    }
+    let step = delta.normalize() * 6.0 * time.delta_secs();
+    for mut t in &mut players {
+        t.translation += step;
+    }
+}
+
+fn follow_player_with_camera(
+    players: Query<&Transform, (With<Player>, Without<Camera3d>)>,
+    mut cameras: Query<&mut Transform, (With<Camera3d>, Without<Player>)>,
+) {
+    let Ok(player) = players.single() else { return };
+    for mut cam in &mut cameras {
+        cam.translation = player.translation + CAMERA_OFFSET;
+        cam.look_at(player.translation, Vec3::Y);
+    }
 }

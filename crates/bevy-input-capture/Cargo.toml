@@ -1,0 +1,15 @@
+[package]
+name = "bevy-input-capture"
+version = "0.0.0"
+edition = "2024"
+description = "Bevy adapter for laye-input. InputCapturePlugin (B4) inserts the InputCapture resource; DefaultBindingsPlugin (B5) binds default keys to Intent events."
+license = "MIT"
+
+[lints]
+workspace = true
+
+[dependencies]
+laye-input = { path = "../laye-input" }
+bevy_app = { version = "=0.19.0", default-features = false, features = ["std"] }
+bevy_ecs = { version = "=0.19.0", default-features = false, features = ["std"] }
+bevy_input = { version = "=0.19.0", default-features = false, features = ["std", "keyboard"] }

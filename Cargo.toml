@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/protocol", "crates/me", "crates/net", "crates/bevy-libp2p", "crates/relaye", "crates/bevy-observability", "crates/bevy-drawer", "crates/bevy-chat", "bevy-starter"]
+members = ["crates/protocol", "crates/me", "crates/net", "crates/bevy-libp2p", "crates/relaye", "crates/bevy-observability", "crates/bevy-drawer", "crates/bevy-chat", "crates/laye-input", "crates/bevy-input-capture", "bevy-starter"]
 
 [workspace.dependencies]
 thiserror = "=2.0.18"

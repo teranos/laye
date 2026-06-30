@@ -1,0 +1,11 @@
+[package]
+name = "laye-input"
+version = "0.0.0"
+edition = "2024"
+description = "Engine-agnostic input arbitration — InputClaims set + Intent vocabulary. Engine adapter lives in bevy-input-capture."
+license = "MIT"
+
+[lints]
+workspace = true
+
+[dependencies]
