@@ -21,7 +21,7 @@ concurrency:
 env:
   AWS_REGION: eu-central-1
   STATIC_BUCKET: laye-bevy-starter-static
-  STATIC_DISTRIBUTION_ID: ''
+  STATIC_DISTRIBUTION_ID: ${{ vars.BEVY_STARTER_DISTRIBUTION_ID }}
   DEPLOY_ROLE_ARN: arn:aws:iam::548351057127:role/relaye-github-deploy
 
 jobs:
@@ -54,13 +54,6 @@ jobs:
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Resolve distribution id
-        run: |
-          DIST_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?Aliases.Items[?contains(@, 'bevy-starter.sbvh.nl')]].Id | [0]" \
-            --output text)
-          echo "STATIC_DISTRIBUTION_ID=$DIST_ID" >> "$GITHUB_ENV"
 
       - name: Sync dist to S3
         run: |

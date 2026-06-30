@@ -22,3 +22,7 @@ provider "aws" {
     }
   }
 }
+
+provider "github" {
+  owner = local.github_owner
+}
