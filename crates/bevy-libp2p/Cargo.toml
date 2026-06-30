@@ -5,6 +5,9 @@ edition = "2024"
 description = "Bevy plugin atop laye-net."
 license = "MIT"
 
+[lints]
+workspace = true
+
 [dependencies]
 laye-protocol = { path = "../protocol" }
 laye-me = { path = "../me" }
@@ -12,6 +15,7 @@ laye-net = { path = "../net" }
 bevy_app = { version = "=0.19.0", default-features = false }
 bevy_ecs = { version = "=0.19.0", default-features = false }
 tracing = "=0.1.44"
+thiserror = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "=0.4.71"

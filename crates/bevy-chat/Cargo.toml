@@ -5,6 +5,9 @@ edition = "2024"
 description = "One-topic gossipsub chat plugin atop bevy-libp2p."
 license = "MIT"
 
+[lints]
+workspace = true
+
 [dependencies]
 bevy-libp2p = { path = "../bevy-libp2p" }
 bevy_app = { version = "=0.19.0", default-features = false }

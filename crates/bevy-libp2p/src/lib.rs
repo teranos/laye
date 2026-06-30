@@ -27,25 +27,12 @@ impl Deref for LayeNet {
     }
 }
 
-#[derive(Resource, Debug, Clone)]
-pub struct LayeNetInitError {
-    pub stage: InitStage,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InitStage {
-    Identity,
-    Net,
-}
-
-impl InitStage {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            InitStage::Identity => "identity",
-            InitStage::Net => "net",
-        }
-    }
+#[derive(Resource, Debug, Clone, thiserror::Error)]
+pub enum LayeNetInitError {
+    #[error("identity stage: {0}")]
+    Identity(String),
+    #[error("net stage: {0}")]
+    Net(String),
 }
 
 #[derive(Message, Debug, Clone)]
@@ -58,11 +45,8 @@ impl Plugin for LibP2PPlugin {
         let keypair = match load_or_fresh(self.identity_bytes.as_deref()) {
             Ok(kp) => kp,
             Err(e) => {
-                let err = LayeNetInitError {
-                    stage: InitStage::Identity,
-                    message: format!("{e}"),
-                };
-                tracing::error!(stage = "identity", error = %err.message, "LibP2PPlugin init failed");
+                let err = LayeNetInitError::Identity(format!("{e}"));
+                tracing::error!(error = %err, "LibP2PPlugin init failed");
                 app.insert_resource(err);
                 return;
             }
@@ -76,11 +60,8 @@ impl Plugin for LibP2PPlugin {
         }) {
             Ok(pair) => pair,
             Err(e) => {
-                let err = LayeNetInitError {
-                    stage: InitStage::Net,
-                    message: format!("{e}"),
-                };
-                tracing::error!(stage = "net", error = %err.message, "LibP2PPlugin init failed");
+                let err = LayeNetInitError::Net(format!("{e}"));
+                tracing::error!(error = %err, "LibP2PPlugin init failed");
                 app.insert_resource(err);
                 return;
             }

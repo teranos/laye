@@ -330,6 +330,7 @@ dependencies = [
  "laye-me",
  "laye-net",
  "laye-protocol",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "wasm-bindgen-futures",
@@ -1868,6 +1869,7 @@ name = "laye-me"
 version = "0.0.0"
 dependencies = [
  "libp2p-identity",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1884,6 +1886,7 @@ dependencies = [
  "libp2p-connection-limits",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "wasm-bindgen-futures",
 ]
 

@@ -5,6 +5,9 @@ edition = "2024"
 description = "Bevy starter for laye."
 license = "MIT"
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

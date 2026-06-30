@@ -18,50 +18,47 @@ unsafe extern "C" {
 pub fn run() {
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
-        let bytes = load_or_mint_identity().await;
-        let kp = laye_me::load(&bytes);
-        let msg = match kp {
-            Ok(k) => {
-                let pk = k.public().try_into_ed25519();
-                match pk {
+        let msg = match load_or_mint_identity().await {
+            Ok(bytes) => match laye_me::load(&bytes) {
+                Ok(k) => match k.public().try_into_ed25519() {
                     Ok(ed) => format!(
                         "bevy-starter loaded — identity {} bytes, pubkey {} bytes",
                         bytes.len(),
                         ed.to_bytes().len()
                     ),
                     Err(e) => format!("bevy-starter loaded — non-Ed25519 public: {e}"),
-                }
-            }
-            Err(e) => format!("bevy-starter load error: {e}"),
+                },
+                Err(e) => format!("bevy-starter load error: {e}"),
+            },
+            Err(e) => format!("bevy-starter identity error: {e}"),
         };
         js_status(&msg);
     });
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn load_or_mint_identity() -> Vec<u8> {
+async fn load_or_mint_identity() -> Result<Vec<u8>, String> {
     use wasm_bindgen::JsCast;
     let val = wasm_bindgen_futures::JsFuture::from(js_load_identity())
         .await
-        .ok();
-    match val {
-        Some(v) if !v.is_null() && !v.is_undefined() => {
-            if let Ok(arr) = v.dyn_into::<js_sys::Uint8Array>() {
-                let mut bytes = vec![0u8; arr.length() as usize];
-                arr.copy_to(&mut bytes);
-                return bytes;
-            }
-            mint_and_save().await
+        .map_err(|e| format!("read identity from IndexedDB: {e:?}"))?;
+    if !val.is_null() && !val.is_undefined() {
+        if let Ok(arr) = val.dyn_into::<js_sys::Uint8Array>() {
+            let mut bytes = vec![0u8; arr.length() as usize];
+            arr.copy_to(&mut bytes);
+            return Ok(bytes);
         }
-        _ => mint_and_save().await,
     }
+    mint_and_save().await
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn mint_and_save() -> Vec<u8> {
+async fn mint_and_save() -> Result<Vec<u8>, String> {
     let fresh = laye_me::fresh();
-    let bytes = laye_me::to_bytes(&fresh).unwrap_or_default();
+    let bytes = laye_me::to_bytes(&fresh).map_err(|e| format!("encode fresh identity: {e}"))?;
     let arr = js_sys::Uint8Array::from(bytes.as_slice());
-    let _ = wasm_bindgen_futures::JsFuture::from(js_save_identity(arr)).await;
-    bytes
+    wasm_bindgen_futures::JsFuture::from(js_save_identity(arr))
+        .await
+        .map_err(|e| format!("save identity to IndexedDB: {e:?}"))?;
+    Ok(bytes)
 }
