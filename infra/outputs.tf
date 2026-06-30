@@ -22,3 +22,15 @@ output "relaye_private_key" {
 output "github_deploy_role_arn" {
   value = aws_iam_role.github_deploy.arn
 }
+
+output "bevy_starter_fqdn" {
+  value = local.bevy_starter_fqdn
+}
+
+output "bevy_starter_bucket" {
+  value = aws_s3_bucket.bevy_starter_static.id
+}
+
+output "bevy_starter_distribution_id" {
+  value = aws_cloudfront_distribution.bevy_starter.id
+}

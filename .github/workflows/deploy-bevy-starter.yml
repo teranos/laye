@@ -1,0 +1,92 @@
+name: deploy-bevy-starter
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'bevy-starter/**'
+      - 'crates/me/**'
+      - 'crates/protocol/**'
+      - '.github/workflows/deploy-bevy-starter.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-bevy-starter
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  STATIC_BUCKET: laye-bevy-starter-static
+  STATIC_DISTRIBUTION_ID: ''
+  DEPLOY_ROLE_ARN: arn:aws:iam::548351057127:role/relaye-github-deploy
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: jetli/wasm-bindgen-action@v0.2.0
+        with:
+          version: '0.2.121'
+
+      - name: Build wasm
+        run: |
+          cargo build --release --target wasm32-unknown-unknown --lib --package bevy-starter
+          mkdir -p bevy-starter/dist
+          wasm-bindgen target/wasm32-unknown-unknown/release/bevy_starter.wasm \
+            --target web --out-dir bevy-starter/dist --no-typescript
+          cp bevy-starter/web/index.html bevy-starter/dist/
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve distribution id
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Aliases.Items[?contains(@, 'bevy-starter.sbvh.nl')]].Id | [0]" \
+            --output text)
+          echo "STATIC_DISTRIBUTION_ID=$DIST_ID" >> "$GITHUB_ENV"
+
+      - name: Sync dist to S3
+        run: |
+          aws s3 sync bevy-starter/dist/ "s3://${{ env.STATIC_BUCKET }}/" \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp bevy-starter/dist/index.html "s3://${{ env.STATIC_BUCKET }}/index.html" \
+            --cache-control "public, max-age=60, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+      - name: Invalidate CloudFront
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${{ env.STATIC_DISTRIBUTION_ID }}" \
+            --paths '/*' \
+            --query 'Invalidation.Id' \
+            --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${{ env.STATIC_DISTRIBUTION_ID }}" \
+            --id "$INVALIDATION_ID"
+
+      - name: Summarize
+        run: |
+          {
+            echo "## Deploy complete"
+            echo ""
+            echo "- Live at: https://bevy-starter.sbvh.nl/"
+          } >> "$GITHUB_STEP_SUMMARY"

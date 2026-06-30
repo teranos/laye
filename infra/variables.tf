@@ -42,3 +42,13 @@ variable "github_repo" {
   type    = string
   default = "teranos/laye"
 }
+
+variable "bevy_starter_subdomain" {
+  type    = string
+  default = "bevy-starter"
+}
+
+variable "bevy_starter_bucket" {
+  type    = string
+  default = "laye-bevy-starter-static"
+}

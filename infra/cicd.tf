@@ -38,6 +38,29 @@ resource "aws_iam_role_policy" "github_deploy" {
         Action   = ["s3:PutObject", "s3:GetObject"]
         Resource = "${aws_s3_bucket.relaye_artifacts.arn}/*"
       },
+      {
+        Sid    = "BevyStarterStaticWrite"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:GetObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          aws_s3_bucket.bevy_starter_static.arn,
+          "${aws_s3_bucket.bevy_starter_static.arn}/*",
+        ]
+      },
+      {
+        Sid    = "BevyStarterInvalidate"
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateInvalidation",
+          "cloudfront:GetInvalidation",
+        ]
+        Resource = aws_cloudfront_distribution.bevy_starter.arn
+      },
     ]
   })
 }
