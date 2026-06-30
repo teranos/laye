@@ -28,7 +28,7 @@
             cargo build --target wasm32-unknown-unknown --release --lib --package bevy-starter
             wasm-bindgen target/wasm32-unknown-unknown/release/bevy_starter.wasm \
               --target web --out-dir bevy-starter/dist --no-typescript
-            cp bevy-starter/web/index.html bevy-starter/dist/
+            cp bevy-starter/web/index.html bevy-starter/web/style.css bevy-starter/dist/
             echo
             echo "bevy-starter — http://localhost:8000/"
             echo

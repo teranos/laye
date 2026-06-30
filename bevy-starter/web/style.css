@@ -1,0 +1,50 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #050608;
+  color: #ddd;
+  font: 14px ui-monospace, Menlo, monospace;
+}
+#bevy {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  outline: none;
+}
+#overlay {
+  position: fixed;
+  top: 1em;
+  left: 1em;
+  right: 1em;
+  max-width: 50em;
+  z-index: 10;
+  pointer-events: none;
+}
+#overlay > * { pointer-events: auto; }
+#status {
+  padding: 0.5em 0.8em;
+  background: rgba(20, 22, 28, 0.85);
+  border: 1px solid #333;
+  backdrop-filter: blur(4px);
+}
+button {
+  margin-top: 1em;
+  padding: 0.6em 1em;
+  background: #2a1212;
+  color: #f88;
+  border: 1px solid #642;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover { background: #3a1818; }
+#panic {
+  margin-top: 1em;
+  padding: 1em;
+  background: #200;
+  border: 1px solid #722;
+  color: #faa;
+  white-space: pre-wrap;
+  display: none;
+}
+#panic.shown { display: block; }
