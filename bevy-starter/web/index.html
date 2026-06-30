@@ -34,12 +34,34 @@
         border: 1px solid #333;
         backdrop-filter: blur(4px);
       }
+      button {
+        margin-top: 1em;
+        padding: 0.6em 1em;
+        background: #2a1212;
+        color: #f88;
+        border: 1px solid #642;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { background: #3a1818; }
+      #panic {
+        margin-top: 1em;
+        padding: 1em;
+        background: #200;
+        border: 1px solid #722;
+        color: #faa;
+        white-space: pre-wrap;
+        display: none;
+      }
+      #panic.shown { display: block; }
     </style>
   </head>
   <body>
     <canvas id="bevy"></canvas>
     <div id="overlay">
       <div id="status">booting…</div>
+      <button id="panic-btn" disabled>trigger rust panic</button>
+      <div id="panic"></div>
     </div>
 
     <script type="module">
@@ -85,8 +107,33 @@
         document.getElementById("status").textContent = msg;
       };
 
+      const panicEl = document.getElementById("panic");
+      function showPanic(source, detail) {
+        panicEl.textContent = `${source}\n\n${detail}`;
+        panicEl.classList.add("shown");
+      }
+      window.__bevyStarterPanic = (envelope) => showPanic("rust panic hook", envelope);
+      window.addEventListener("error", (ev) => {
+        const detail = ev.error?.stack ?? ev.error?.message ?? ev.message ?? "(no detail)";
+        showPanic("window.error", detail);
+      });
+      window.addEventListener("unhandledrejection", (ev) => {
+        const detail = ev.reason?.stack ?? ev.reason?.message ?? String(ev.reason);
+        showPanic("unhandledrejection", detail);
+      });
+
       const wasm = await import("./bevy_starter.js");
       await wasm.default({ module_or_path: "./bevy_starter_bg.wasm" });
+
+      const btn = document.getElementById("panic-btn");
+      btn.disabled = false;
+      btn.onclick = () => {
+        try {
+          wasm.trigger_panic_demo();
+        } catch (e) {
+          showPanic("wasm aborted after panic", e?.stack ?? e?.message ?? String(e));
+        }
+      };
     </script>
   </body>
 </html>

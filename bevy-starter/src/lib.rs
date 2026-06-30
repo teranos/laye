@@ -14,10 +14,40 @@ unsafe extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterStatus")]
     fn js_status(msg: &str);
+
+    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterPanic")]
+    fn js_panic(envelope: &str);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown location>".to_string());
+        let payload = info.payload();
+        let msg = payload
+            .downcast_ref::<&str>()
+            .copied()
+            .map(|s| s.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<non-string panic payload>".to_string());
+        js_panic(&format!("rust panic at {location}: {msg}"));
+    }));
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn trigger_panic_demo() {
+    panic!("demo panic from button — errors-sacred end-to-end test");
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn run() {
+    #[cfg(target_arch = "wasm32")]
+    install_panic_hook();
+
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
         let status = match load_or_mint_identity().await {
