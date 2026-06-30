@@ -4,24 +4,43 @@
     <meta charset="utf-8" />
     <title>bevy-starter</title>
     <style>
-      body {
-        font: 14px ui-monospace, Menlo, monospace;
-        max-width: 50em;
-        margin: 2em auto;
-        padding: 0 1em;
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #050608;
         color: #ddd;
-        background: #111;
+        font: 14px ui-monospace, Menlo, monospace;
       }
+      #bevy {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        outline: none;
+      }
+      #overlay {
+        position: fixed;
+        top: 1em;
+        left: 1em;
+        right: 1em;
+        max-width: 50em;
+        z-index: 10;
+        pointer-events: none;
+      }
+      #overlay > * { pointer-events: auto; }
       #status {
-        padding: 1em;
-        background: #1a1a1a;
+        padding: 0.5em 0.8em;
+        background: rgba(20, 22, 28, 0.85);
         border: 1px solid #333;
+        backdrop-filter: blur(4px);
       }
     </style>
   </head>
   <body>
-    <h1>bevy-starter</h1>
-    <div id="status">booting…</div>
+    <canvas id="bevy"></canvas>
+    <div id="overlay">
+      <div id="status">booting…</div>
+    </div>
 
     <script type="module">
       const DB = "bevy-starter";

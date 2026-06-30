@@ -1,3 +1,5 @@
+mod scene;
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -18,22 +20,26 @@ unsafe extern "C" {
 pub fn run() {
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
-        let msg = match load_or_mint_identity().await {
+        let status = match load_or_mint_identity().await {
             Ok(bytes) => match laye_me::load(&bytes) {
                 Ok(k) => match k.public().try_into_ed25519() {
                     Ok(ed) => format!(
-                        "bevy-starter loaded — identity {} bytes, pubkey {} bytes",
+                        "identity {} bytes, pubkey {} bytes — starting scene",
                         bytes.len(),
                         ed.to_bytes().len()
                     ),
-                    Err(e) => format!("bevy-starter loaded — non-Ed25519 public: {e}"),
+                    Err(e) => format!("non-Ed25519 public: {e}"),
                 },
-                Err(e) => format!("bevy-starter load error: {e}"),
+                Err(e) => format!("identity load error: {e}"),
             },
-            Err(e) => format!("bevy-starter identity error: {e}"),
+            Err(e) => format!("identity error: {e}"),
         };
-        js_status(&msg);
+        js_status(&status);
+        scene::build_and_run_app();
     });
+
+    #[cfg(not(target_arch = "wasm32"))]
+    scene::build_and_run_app();
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -42,12 +48,13 @@ async fn load_or_mint_identity() -> Result<Vec<u8>, String> {
     let val = wasm_bindgen_futures::JsFuture::from(js_load_identity())
         .await
         .map_err(|e| format!("read identity from IndexedDB: {e:?}"))?;
-    if !val.is_null() && !val.is_undefined() {
-        if let Ok(arr) = val.dyn_into::<js_sys::Uint8Array>() {
-            let mut bytes = vec![0u8; arr.length() as usize];
-            arr.copy_to(&mut bytes);
-            return Ok(bytes);
-        }
+    if !val.is_null()
+        && !val.is_undefined()
+        && let Ok(arr) = val.dyn_into::<js_sys::Uint8Array>()
+    {
+        let mut bytes = vec![0u8; arr.length() as usize];
+        arr.copy_to(&mut bytes);
+        return Ok(bytes);
     }
     mint_and_save().await
 }

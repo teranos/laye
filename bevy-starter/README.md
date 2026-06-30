@@ -1,0 +1,5 @@
+## Bevy Starter
+
+```
+nix run
+```
