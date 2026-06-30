@@ -27,26 +27,68 @@ impl Deref for LayeNet {
     }
 }
 
+#[derive(Resource, Debug, Clone)]
+pub struct LayeNetInitError {
+    pub stage: InitStage,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitStage {
+    Identity,
+    Net,
+}
+
+impl InitStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InitStage::Identity => "identity",
+            InitStage::Net => "net",
+        }
+    }
+}
+
 #[derive(Message, Debug, Clone)]
 pub struct LibP2PMessage(pub NetEvent);
 
 impl Plugin for LibP2PPlugin {
     fn build(&self, app: &mut App) {
-        let keypair = load_or_fresh(self.identity_bytes.as_deref())
-            .expect("laye-me identity load");
+        app.add_message::<LibP2PMessage>();
 
-        let (net, drive) = laye_net::new(NetConfig {
+        let keypair = match load_or_fresh(self.identity_bytes.as_deref()) {
+            Ok(kp) => kp,
+            Err(e) => {
+                let err = LayeNetInitError {
+                    stage: InitStage::Identity,
+                    message: format!("{e}"),
+                };
+                tracing::error!(stage = "identity", error = %err.message, "LibP2PPlugin init failed");
+                app.insert_resource(err);
+                return;
+            }
+        };
+
+        let (net, drive) = match laye_net::new(NetConfig {
             bootstrap_addrs: self.bootstrap_addrs.clone(),
             keypair,
             topics: self.topics.clone(),
             identify_protocol: self.identify_protocol.clone(),
-        })
-        .expect("laye-net new");
+        }) {
+            Ok(pair) => pair,
+            Err(e) => {
+                let err = LayeNetInitError {
+                    stage: InitStage::Net,
+                    message: format!("{e}"),
+                };
+                tracing::error!(stage = "net", error = %err.message, "LibP2PPlugin init failed");
+                app.insert_resource(err);
+                return;
+            }
+        };
 
         spawn_drive(drive);
 
         app.insert_resource(LayeNet(net));
-        app.add_message::<LibP2PMessage>();
         app.add_systems(Update, drain_events);
     }
 }

@@ -331,6 +331,7 @@ dependencies = [
  "laye-net",
  "laye-protocol",
  "tokio",
+ "tracing",
  "wasm-bindgen-futures",
 ]
 
