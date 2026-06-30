@@ -1,0 +1,19 @@
+[package]
+name = "bevy-starter"
+version = "0.0.0"
+edition = "2024"
+description = "Bevy starter for laye."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+laye-me = { path = "../crates/me" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.121"
+wasm-bindgen-futures = "=0.4.71"
+js-sys = "=0.3.98"
+getrandom = { version = "=0.3.4", features = ["wasm_js"] }
+getrandom_v02 = { package = "getrandom", version = "=0.2.17", features = ["js"] }

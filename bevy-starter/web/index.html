@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>bevy-starter</title>
+    <style>
+      body {
+        font: 14px ui-monospace, Menlo, monospace;
+        max-width: 50em;
+        margin: 2em auto;
+        padding: 0 1em;
+        color: #ddd;
+        background: #111;
+      }
+      #status {
+        padding: 1em;
+        background: #1a1a1a;
+        border: 1px solid #333;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>bevy-starter</h1>
+    <div id="status">booting…</div>
+
+    <script type="module">
+      const DB = "bevy-starter";
+      const STORE = "identity";
+      const KEY = "self";
+
+      function openDb() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(DB, 1);
+          req.onupgradeneeded = (ev) => {
+            const db = ev.target.result;
+            if (!db.objectStoreNames.contains(STORE)) {
+              db.createObjectStore(STORE);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      window.__bevyStarterLoadIdentity = async () => {
+        const db = await openDb();
+        return await new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE, "readonly");
+          const req = tx.objectStore(STORE).get(KEY);
+          req.onsuccess = () => resolve(req.result ?? null);
+          req.onerror = () => reject(req.error);
+        });
+      };
+
+      window.__bevyStarterSaveIdentity = async (bytes) => {
+        const db = await openDb();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE, "readwrite");
+          const req = tx.objectStore(STORE).put(bytes, KEY);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      };
+
+      window.__bevyStarterStatus = (msg) => {
+        document.getElementById("status").textContent = msg;
+      };
+
+      const wasm = await import("./bevy_starter.js");
+      await wasm.default({ module_or_path: "./bevy_starter_bg.wasm" });
+    </script>
+  </body>
+</html>
