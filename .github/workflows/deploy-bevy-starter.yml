@@ -44,6 +44,9 @@ jobs:
           version: '0.2.121'
 
       - name: Build wasm
+        env:
+          BEVY_STARTER_BUILD_COMMIT: ${{ github.sha }}
+          BEVY_STARTER_BUILD_TIME: ${{ github.event.head_commit.timestamp }}
         run: |
           cargo build --release --target wasm32-unknown-unknown --lib --package bevy-starter
           mkdir -p bevy-starter/dist

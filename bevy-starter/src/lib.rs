@@ -1,3 +1,4 @@
+mod build_info;
 mod scene;
 
 #[cfg(target_arch = "wasm32")]

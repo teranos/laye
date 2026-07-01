@@ -25,6 +25,8 @@
             set -eu
             root="$(git rev-parse --show-toplevel)"
             cd "$root"
+            export BEVY_STARTER_BUILD_COMMIT="$(git rev-parse --short HEAD)"
+            export BEVY_STARTER_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             cargo build --target wasm32-unknown-unknown --release --lib --package bevy-starter
             wasm-bindgen target/wasm32-unknown-unknown/release/bevy_starter.wasm \
               --target web --out-dir bevy-starter/dist --no-typescript

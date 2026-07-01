@@ -3,6 +3,7 @@ use bevy::camera::Hdr;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::WindowPlugin;
+use crate::build_info;
 use bevy_chat::ChatOverlayPlugin;
 use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
@@ -39,7 +40,7 @@ pub fn build_and_run_app() {
             DrawerOverlayPlugin,
             ChatOverlayPlugin,
         ))
-        .add_systems(Startup, (setup_scene, seed_drawer))
+        .add_systems(Startup, (setup_scene, seed_drawer, spawn_watermark))
         .add_systems(Update, (move_player_on_wasd, follow_player_with_camera).chain());
     app.run();
 }
@@ -136,7 +137,31 @@ fn move_player_on_wasd(
 fn seed_drawer(mut log: ResMut<ErrorLog>) {
     log.emit(Severity::Note, "bevy-starter booted");
     log.emit(Severity::Note, "press ` or \\ to toggle this drawer");
-    log.emit(Severity::Warn, "chat overlay lands in S5");
+    log.emit(
+        Severity::Note,
+        format!("build {} · {}", build_info::COMMIT, build_info::BUILT_AT),
+    );
+}
+
+fn spawn_watermark(mut commands: Commands) {
+    commands.spawn((
+        Text::new(format!(
+            "starter · {} · {}",
+            build_info::COMMIT,
+            build_info::BUILT_AT
+        )),
+        TextFont {
+            font_size: FontSize::Px(11.0),
+            ..default()
+        },
+        TextColor(Color::srgb(0.55, 0.55, 0.55)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(6.0),
+            right: Val::Px(6.0),
+            ..default()
+        },
+    ));
 }
 
 fn follow_player_with_camera(
