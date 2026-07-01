@@ -48,3 +48,29 @@ button:hover { background: #3a1818; }
   display: none;
 }
 #panic.shown { display: block; }
+#commit {
+  position: fixed;
+  bottom: 0.5em;
+  right: 0.5em;
+  padding: 0.25em 0.5em;
+  color: #888;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+}
+#errors {
+  margin-top: 1em;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+#errors:empty { display: none; }
+.err-line {
+  padding: 0.4em 0.6em;
+  margin-bottom: 0.25em;
+  background: #2a0c0c;
+  border-left: 3px solid #f66;
+  color: #faa;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
