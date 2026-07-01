@@ -3,7 +3,10 @@ use bevy::camera::Hdr;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::WindowPlugin;
+use bevy_chat::ChatOverlayPlugin;
+use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
+use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
 
@@ -31,8 +34,12 @@ pub fn build_and_run_app() {
                 }),
             InputCapturePlugin,
             DefaultBindingsPlugin,
+            ObservabilityPlugin,
+            DrawerPlugin,
+            DrawerOverlayPlugin,
+            ChatOverlayPlugin,
         ))
-        .add_systems(Startup, setup_scene)
+        .add_systems(Startup, (setup_scene, seed_drawer))
         .add_systems(Update, (move_player_on_wasd, follow_player_with_camera).chain());
     app.run();
 }
@@ -59,17 +66,26 @@ fn setup_scene(
         Transform::from_xyz(8.0, 20.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
-    let bowl_mesh = meshes.add(Cylinder::new(8.0, 0.4));
     let bowl_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.15, 0.18, 0.25),
         perceptual_roughness: 0.9,
         metallic: 0.0,
         ..default()
     });
+    let floor_mesh = meshes.add(Cylinder::new(8.0, 0.3));
     commands.spawn((
-        Mesh3d(bowl_mesh),
+        Mesh3d(floor_mesh),
+        MeshMaterial3d(bowl_mat.clone()),
+        Transform::from_xyz(0.0, -0.15, 0.0),
+    ));
+    let rim_mesh = meshes.add(Torus {
+        major_radius: 8.0,
+        minor_radius: 0.35,
+    });
+    commands.spawn((
+        Mesh3d(rim_mesh),
         MeshMaterial3d(bowl_mat),
-        Transform::from_xyz(0.0, -0.2, 0.0),
+        Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
     let player_mesh = meshes.add(Sphere::new(0.6));
@@ -115,6 +131,12 @@ fn move_player_on_wasd(
     for mut t in &mut players {
         t.translation += step;
     }
+}
+
+fn seed_drawer(mut log: ResMut<ErrorLog>) {
+    log.emit(Severity::Note, "bevy-starter booted");
+    log.emit(Severity::Note, "press ` or \\ to toggle this drawer");
+    log.emit(Severity::Warn, "chat overlay lands in S5");
 }
 
 fn follow_player_with_camera(

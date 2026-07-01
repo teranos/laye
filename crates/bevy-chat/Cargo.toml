@@ -2,7 +2,7 @@
 name = "bevy-chat"
 version = "0.0.0"
 edition = "2024"
-description = "One-topic gossipsub chat plugin atop bevy-libp2p."
+description = "One-topic gossipsub chat: wire (ChatPlugin) + overlay UI (ChatOverlayPlugin)."
 license = "MIT"
 
 [lints]
@@ -10,8 +10,15 @@ workspace = true
 
 [dependencies]
 bevy-libp2p = { path = "../bevy-libp2p" }
+bevy-input-capture = { path = "../bevy-input-capture" }
 bevy_app = { version = "=0.19.0", default-features = false }
 bevy_ecs = { version = "=0.19.0", default-features = false }
+bevy = { version = "=0.19.0", default-features = false, features = [
+    "bevy_ui",
+    "bevy_text",
+    "default_font",
+    "std",
+] }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.143"
 

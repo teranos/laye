@@ -485,6 +485,8 @@ dependencies = [
 name = "bevy-chat"
 version = "0.0.0"
 dependencies = [
+ "bevy",
+ "bevy-input-capture",
  "bevy-libp2p",
  "bevy_app",
  "bevy_ecs",
@@ -497,6 +499,8 @@ dependencies = [
 name = "bevy-drawer"
 version = "0.0.0"
 dependencies = [
+ "bevy",
+ "bevy-input-capture",
  "bevy-observability",
  "bevy_app",
  "bevy_ecs",
@@ -541,7 +545,10 @@ name = "bevy-starter"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "bevy-chat",
+ "bevy-drawer",
  "bevy-input-capture",
+ "bevy-observability",
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "js-sys",
@@ -1012,6 +1019,7 @@ dependencies = [
  "bevy_reflect",
  "bevy_render",
  "bevy_shader",
+ "bevy_sprite_render",
  "bevy_transform",
  "bevy_utils",
  "bytemuck",
@@ -1161,6 +1169,8 @@ dependencies = [
  "bevy_text",
  "bevy_time",
  "bevy_transform",
+ "bevy_ui",
+ "bevy_ui_render",
  "bevy_utils",
  "bevy_window",
  "bevy_winit",

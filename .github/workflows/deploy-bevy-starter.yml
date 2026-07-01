@@ -5,8 +5,9 @@ on:
     branches: ['**']
     paths:
       - 'bevy-starter/**'
-      - 'crates/me/**'
-      - 'crates/protocol/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/deploy-bevy-starter.yml'
   workflow_dispatch:
 
