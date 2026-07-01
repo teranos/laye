@@ -11,6 +11,7 @@
       <div id="status">booting…</div>
       <button id="panic-btn" disabled>trigger rust panic</button>
       <div id="panic"></div>
+      <div id="errors"></div>
     </div>
 
     <script type="module">
@@ -62,6 +63,14 @@
         panicEl.classList.add("shown");
       }
       window.__bevyStarterPanic = (envelope) => showPanic("rust panic hook", envelope);
+
+      const errorsEl = document.getElementById("errors");
+      window.__bevyStarterError = (msg) => {
+        const line = document.createElement("div");
+        line.className = "err-line";
+        line.textContent = msg;
+        errorsEl.appendChild(line);
+      };
       window.addEventListener("error", (ev) => {
         const detail = ev.error?.stack ?? ev.error?.message ?? ev.message ?? "(no detail)";
         showPanic("window.error", detail);

@@ -1,5 +1,6 @@
 use bevy::asset::AssetMetaCheck;
 use bevy::camera::Hdr;
+use bevy::log::LogPlugin;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::WindowPlugin;
@@ -27,6 +28,11 @@ pub fn build_and_run_app() {
                 })
                 .set(AssetPlugin {
                     meta_check: AssetMetaCheck::Never,
+                    ..default()
+                })
+                .set(LogPlugin {
+                    #[cfg(target_arch = "wasm32")]
+                    custom_layer: crate::install_wasm_error_layer,
                     ..default()
                 }),
             InputCapturePlugin,

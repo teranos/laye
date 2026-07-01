@@ -17,6 +17,55 @@ unsafe extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterPanic")]
     fn js_panic(envelope: &str);
+
+    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterError")]
+    fn js_error(msg: &str);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn install_wasm_error_layer(
+    _app: &mut bevy::app::App,
+) -> Option<bevy::log::BoxedLayer> {
+    use bevy::log::tracing::field::Visit;
+    use bevy::log::tracing::{self, Level, Subscriber};
+    use bevy::log::tracing_subscriber::Layer;
+
+    #[derive(Default)]
+    struct MessageVisitor {
+        message: String,
+    }
+    impl Visit for MessageVisitor {
+        fn record_debug(
+            &mut self,
+            field: &tracing::field::Field,
+            value: &dyn std::fmt::Debug,
+        ) {
+            if field.name() == "message" {
+                self.message = format!("{value:?}");
+            }
+        }
+    }
+
+    struct WasmErrorLayer;
+    impl<S: Subscriber> Layer<S> for WasmErrorLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: bevy::log::tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let level = *event.metadata().level();
+            if level != Level::ERROR && level != Level::WARN {
+                return;
+            }
+            let target = event.metadata().target();
+            let mut v = MessageVisitor::default();
+            event.record(&mut v);
+            let tag = if level == Level::ERROR { "ERROR" } else { "WARN" };
+            js_error(&format!("[{tag}] {target}: {}", v.message));
+        }
+    }
+
+    Some(Box::new(WasmErrorLayer))
 }
 
 #[cfg(target_arch = "wasm32")]

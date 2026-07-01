@@ -48,3 +48,19 @@ button:hover { background: #3a1818; }
   display: none;
 }
 #panic.shown { display: block; }
+#errors {
+  margin-top: 1em;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+#errors:empty { display: none; }
+.err-line {
+  padding: 0.4em 0.6em;
+  margin-bottom: 0.25em;
+  background: #2a0c0c;
+  border-left: 3px solid #f66;
+  color: #faa;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
