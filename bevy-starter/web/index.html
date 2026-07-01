@@ -12,6 +12,10 @@
       <button id="panic-btn" disabled>trigger rust panic</button>
       <div id="panic"></div>
     </div>
+    <div id="bevy-starter-loading">
+      <div id="bevy-starter-loading-text">loading bevy-starter</div>
+      <progress></progress>
+    </div>
 
     <script type="module">
       const DB = "bevy-starter";
@@ -71,8 +75,53 @@
         showPanic("unhandledrejection", detail);
       });
 
+      const loadingText = document.getElementById("bevy-starter-loading-text");
+      const loadingBar = document.querySelector("#bevy-starter-loading progress");
+      function fmtMB(bytes) {
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+      function updateProgress(loaded, total) {
+        if (!loadingText || !loadingBar) return;
+        if (total > 0) {
+          const pct = Math.floor((loaded / total) * 100);
+          loadingBar.value = loaded;
+          loadingBar.max = total;
+          loadingText.textContent = `loading bevy-starter · ${pct}% · ${fmtMB(loaded)}/${fmtMB(total)}`;
+        } else {
+          loadingText.textContent = `loading bevy-starter · ${fmtMB(loaded)}`;
+        }
+      }
+      async function streamWasmBytes(url) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`fetch ${url} → HTTP ${response.status}`);
+        const total = parseInt(response.headers.get("content-length") ?? "0", 10);
+        const body = response.body;
+        if (!body) throw new Error(`fetch ${url} → response.body missing`);
+        const reader = body.getReader();
+        const chunks = [];
+        let loaded = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            loaded += value.length;
+            updateProgress(loaded, total);
+          }
+        }
+        const bytes = new Uint8Array(loaded);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.length;
+        }
+        return bytes;
+      }
+
       const wasm = await import("./bevy_starter.js");
-      await wasm.default({ module_or_path: "./bevy_starter_bg.wasm" });
+      const wasmBytes = await streamWasmBytes("./bevy_starter_bg.wasm");
+      await wasm.default({ module_or_path: wasmBytes });
+      document.body.classList.add("loaded");
 
       const btn = document.getElementById("panic-btn");
       btn.disabled = false;
