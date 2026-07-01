@@ -89,6 +89,23 @@ pub fn install_panic_hook() {
     }));
 }
 
+// Known-noisy targets — dropped before they reach the overlay so
+// real signal isn't buried under wgpu-hal texture-view heuristic
+// chatter (emitted at `log::error!` inside wgpu-hal's WebGL2 path,
+// fires per-draw, isn't an actual error). Events still reach the
+// browser devtools console via bevy_log's default subscriber; only
+// the in-app overlay filters them out.
+//
+// Prefix match against the effective target — for `log::error!()`
+// forwarded through `tracing-log`, the crate target lives in the
+// `log.target` field, not `metadata().target()` (which is hardcoded
+// to "log" by tracing-log 0.2). See `EventVisitor` below.
+pub const DROPPED_LOG_TARGETS: &[&str] = &["wgpu_hal::gles"];
+
+pub(crate) fn should_drop_target(target: &str) -> bool {
+    DROPPED_LOG_TARGETS.iter().any(|p| target.starts_with(p))
+}
+
 pub struct CaptureLayer;
 
 impl<S: Subscriber> Layer<S> for CaptureLayer {
@@ -102,24 +119,41 @@ impl<S: Subscriber> Layer<S> for CaptureLayer {
             tracing::Level::WARN => Severity::Warn,
             _ => return,
         };
-        let target = event.metadata().target();
-        let mut visitor = MessageVisitor::default();
+        let mut visitor = EventVisitor::default();
         event.record(&mut visitor);
-        let formatted = format!("{target}: {}", visitor.message);
+        let metadata_target = event.metadata().target();
+        let effective_target = visitor
+            .log_target
+            .as_deref()
+            .unwrap_or(metadata_target);
+        if should_drop_target(effective_target) {
+            return;
+        }
+        let formatted = format!("{effective_target}: {}", visitor.message);
         let mut q = LOG_QUEUE.lock().unwrap_or_else(|p| p.into_inner());
         q.push((severity, formatted));
     }
 }
 
 #[derive(Default)]
-struct MessageVisitor {
+struct EventVisitor {
     message: String,
+    log_target: Option<String>,
 }
 
-impl tracing::field::Visit for MessageVisitor {
+impl tracing::field::Visit for EventVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.message = format!("{value:?}");
+        match field.name() {
+            "message" => self.message = format!("{value:?}"),
+            "log.target" => self.log_target = Some(format!("{value:?}")),
+            _ => {}
+        }
+    }
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        match field.name() {
+            "message" => self.message = value.to_string(),
+            "log.target" => self.log_target = Some(value.to_string()),
+            _ => {}
         }
     }
 }
@@ -135,5 +169,27 @@ pub fn drain_logs(mut log: ResMut<ErrorLog>) {
     let mut q = LOG_QUEUE.lock().unwrap_or_else(|p| p.into_inner());
     for (sev, msg) in q.drain(..) {
         log.emit(sev, msg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_drop_target;
+
+    #[test]
+    fn wgpu_hal_gles_is_dropped() {
+        assert!(should_drop_target("wgpu_hal::gles"));
+        assert!(should_drop_target("wgpu_hal::gles::device"));
+        assert!(should_drop_target("wgpu_hal::gles::adapter"));
+    }
+
+    #[test]
+    fn non_wgpu_targets_pass_through() {
+        assert!(!should_drop_target("wgpu"));
+        assert!(!should_drop_target("wgpu_hal"));
+        assert!(!should_drop_target("wgpu_hal::vulkan"));
+        assert!(!should_drop_target("bevy_render"));
+        assert!(!should_drop_target("rave"));
+        assert!(!should_drop_target("log"));
     }
 }
