@@ -48,7 +48,7 @@ jobs:
           mkdir -p bevy-starter/dist
           wasm-bindgen target/wasm32-unknown-unknown/release/bevy_starter.wasm \
             --target web --out-dir bevy-starter/dist --no-typescript
-          cp bevy-starter/web/index.html bevy-starter/dist/
+          cp bevy-starter/web/index.html bevy-starter/web/style.css bevy-starter/dist/
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
