@@ -7,15 +7,45 @@
   </head>
   <body>
     <canvas id="bevy"></canvas>
+    <div id="version-switcher">
+      <select id="version-select"><option>loading…</option></select>
+    </div>
     <div id="overlay">
       <div id="status">booting…</div>
       <button id="panic-btn" disabled>trigger rust panic</button>
       <div id="panic"></div>
+      <div id="errors"></div>
     </div>
     <div id="bevy-starter-loading">
       <div id="bevy-starter-loading-text">loading bevy-starter</div>
       <progress></progress>
     </div>
+
+    <script type="module">
+      (async () => {
+        const parts = location.pathname.replace(/^\/+|\/+$/g, "").split("/");
+        const current = parts[0] || "main";
+        const sel = document.getElementById("version-select");
+        try {
+          const r = await fetch("/versions.json", { cache: "no-cache" });
+          const branches = (await r.json()).filter((b) => b !== "main");
+          const versions = ["main", ...branches];
+          sel.innerHTML = "";
+          for (const v of versions) {
+            const o = document.createElement("option");
+            o.value = v;
+            o.textContent = v;
+            if (v === current) o.selected = true;
+            sel.appendChild(o);
+          }
+          sel.addEventListener("change", () => {
+            location.pathname = sel.value === "main" ? "/" : `/${sel.value}/`;
+          });
+        } catch (e) {
+          sel.innerHTML = `<option>${current}</option>`;
+        }
+      })();
+    </script>
 
     <script type="module">
       const DB = "bevy-starter";
@@ -66,6 +96,14 @@
         panicEl.classList.add("shown");
       }
       window.__bevyStarterPanic = (envelope) => showPanic("rust panic hook", envelope);
+
+      const errorsEl = document.getElementById("errors");
+      window.__bevyStarterError = (msg) => {
+        const line = document.createElement("div");
+        line.className = "err-line";
+        line.textContent = msg;
+        errorsEl.appendChild(line);
+      };
       window.addEventListener("error", (ev) => {
         const detail = ev.error?.stack ?? ev.error?.message ?? ev.message ?? "(no detail)";
         showPanic("window.error", detail);

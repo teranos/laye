@@ -1,0 +1,39 @@
+name: cleanup-bevy-starter-branch
+
+on:
+  delete:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  STATIC_BUCKET: laye-bevy-starter-static
+  STATIC_DISTRIBUTION_ID: ${{ vars.BEVY_STARTER_DISTRIBUTION_ID }}
+  DEPLOY_ROLE_ARN: arn:aws:iam::548351057127:role/relaye-github-deploy
+
+jobs:
+  cleanup:
+    if: github.event.ref_type == 'branch' && github.event.ref != 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Remove branch prefix and refresh versions.json
+        run: |
+          REF="${{ github.event.ref }}"
+          aws s3 rm --recursive "s3://${{ env.STATIC_BUCKET }}/${REF}/"
+          aws s3api list-objects-v2 --bucket "${{ env.STATIC_BUCKET }}" \
+            --delimiter '/' \
+            --query 'CommonPrefixes[].Prefix' \
+            --output json | jq '(. // []) | map(rtrimstr("/"))' > versions.json
+          aws s3 cp versions.json "s3://${{ env.STATIC_BUCKET }}/versions.json" \
+            --cache-control "public, max-age=60, must-revalidate" \
+            --content-type "application/json"
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ env.STATIC_DISTRIBUTION_ID }}" \
+            --paths "/${REF}/*" "/versions.json"

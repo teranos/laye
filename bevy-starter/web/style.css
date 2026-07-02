@@ -48,6 +48,22 @@ button:hover { background: #3a1818; }
   display: none;
 }
 #panic.shown { display: block; }
+#errors {
+  margin-top: 1em;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+#errors:empty { display: none; }
+.err-line {
+  padding: 0.4em 0.6em;
+  margin-bottom: 0.25em;
+  background: #2a0c0c;
+  border-left: 3px solid #f66;
+  color: #faa;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
 #bevy-starter-loading {
   position: fixed;
   top: 50%;
@@ -73,3 +89,19 @@ button:hover { background: #3a1818; }
 #bevy-starter-loading progress::-webkit-progress-value { background: #6f9; }
 #bevy-starter-loading progress::-moz-progress-bar { background: #6f9; }
 body.loaded #bevy-starter-loading { display: none; }
+#version-switcher {
+  position: fixed;
+  top: 1em;
+  right: 1em;
+  z-index: 20;
+}
+#version-select {
+  padding: 0.35em 0.6em;
+  background: rgba(20, 22, 28, 0.85);
+  border: 1px solid #333;
+  color: #ddd;
+  font: 12px ui-monospace, Menlo, monospace;
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+#version-select:hover { border-color: #555; }

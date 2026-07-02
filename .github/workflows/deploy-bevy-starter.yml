@@ -48,28 +48,53 @@ jobs:
           mkdir -p bevy-starter/dist
           wasm-bindgen target/wasm32-unknown-unknown/release/bevy_starter.wasm \
             --target web --out-dir bevy-starter/dist --no-typescript
-          cp bevy-starter/web/index.html bevy-starter/dist/
+          cp bevy-starter/web/index.html bevy-starter/web/style.css bevy-starter/dist/
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Compute deploy target
+        id: target
+        run: |
+          REF="${{ github.ref_name }}"
+          if [ "$REF" = "main" ]; then
+            echo "prefix=" >> "$GITHUB_OUTPUT"
+            echo "invalidation_path=/*" >> "$GITHUB_OUTPUT"
+            echo "url=https://bevy-starter.sbvh.nl/" >> "$GITHUB_OUTPUT"
+          else
+            echo "prefix=${REF}/" >> "$GITHUB_OUTPUT"
+            echo "invalidation_path=/${REF}/*" >> "$GITHUB_OUTPUT"
+            echo "url=https://bevy-starter.sbvh.nl/${REF}/" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Sync dist to S3
         run: |
-          aws s3 sync bevy-starter/dist/ "s3://${{ env.STATIC_BUCKET }}/" \
+          PREFIX="${{ steps.target.outputs.prefix }}"
+          aws s3 sync bevy-starter/dist/ "s3://${{ env.STATIC_BUCKET }}/${PREFIX}" \
             --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "index.html"
-          aws s3 cp bevy-starter/dist/index.html "s3://${{ env.STATIC_BUCKET }}/index.html" \
+          aws s3 cp bevy-starter/dist/index.html "s3://${{ env.STATIC_BUCKET }}/${PREFIX}index.html" \
             --cache-control "public, max-age=60, must-revalidate" \
             --content-type "text/html; charset=utf-8"
+
+      - name: Regenerate versions.json
+        run: |
+          aws s3api list-objects-v2 --bucket "${{ env.STATIC_BUCKET }}" \
+            --delimiter '/' \
+            --query 'CommonPrefixes[].Prefix' \
+            --output json | jq '(. // []) | map(rtrimstr("/"))' > versions.json
+          aws s3 cp versions.json "s3://${{ env.STATIC_BUCKET }}/versions.json" \
+            --cache-control "public, max-age=60, must-revalidate" \
+            --content-type "application/json"
 
       - name: Invalidate CloudFront
         run: |
           INVALIDATION_ID=$(aws cloudfront create-invalidation \
             --distribution-id "${{ env.STATIC_DISTRIBUTION_ID }}" \
-            --paths '/*' \
+            --paths "${{ steps.target.outputs.invalidation_path }}" "/versions.json" \
             --query 'Invalidation.Id' \
             --output text)
           aws cloudfront wait invalidation-completed \
@@ -81,5 +106,5 @@ jobs:
           {
             echo "## Deploy complete"
             echo ""
-            echo "- Live at: https://bevy-starter.sbvh.nl/"
+            echo "- Live at: ${{ steps.target.outputs.url }}"
           } >> "$GITHUB_STEP_SUMMARY"

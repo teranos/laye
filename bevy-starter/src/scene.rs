@@ -1,9 +1,12 @@
 use bevy::asset::AssetMetaCheck;
 use bevy::camera::Hdr;
+use bevy::log::LogPlugin;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::WindowPlugin;
+use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
+use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
 
@@ -28,13 +31,26 @@ pub fn build_and_run_app() {
                 .set(AssetPlugin {
                     meta_check: AssetMetaCheck::Never,
                     ..default()
+                })
+                .set(LogPlugin {
+                    #[cfg(target_arch = "wasm32")]
+                    custom_layer: crate::install_wasm_error_layer,
+                    ..default()
                 }),
             InputCapturePlugin,
             DefaultBindingsPlugin,
+            ObservabilityPlugin,
+            DrawerPlugin,
+            DrawerOverlayPlugin,
         ))
-        .add_systems(Startup, setup_scene)
+        .add_systems(Startup, (setup_scene, seed_drawer))
         .add_systems(Update, (move_player_on_wasd, follow_player_with_camera).chain());
     app.run();
+}
+
+fn seed_drawer(mut log: ResMut<ErrorLog>) {
+    log.emit(Severity::Note, "bevy-starter booted");
+    log.emit(Severity::Note, "press ` or \\ to toggle this drawer");
 }
 
 fn setup_scene(
