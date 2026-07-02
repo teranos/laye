@@ -485,6 +485,8 @@ dependencies = [
 name = "bevy-chat"
 version = "0.0.0"
 dependencies = [
+ "bevy",
+ "bevy-input-capture",
  "bevy-libp2p",
  "bevy_app",
  "bevy_ecs",
@@ -543,6 +545,7 @@ name = "bevy-starter"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "bevy-chat",
  "bevy-drawer",
  "bevy-input-capture",
  "bevy-observability",

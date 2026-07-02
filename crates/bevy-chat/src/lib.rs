@@ -1,7 +1,13 @@
-use bevy_app::{App, Plugin, Update};
-use bevy_ecs::prelude::*;
+use bevy::input::ButtonState;
+use bevy::input::keyboard::KeyboardInput;
+use bevy::prelude::*;
+use bevy_input_capture::{InputCapture, Intent, IntentEvent};
 use bevy_libp2p::{LayeNet, LibP2PMessage, NetEvent, Topic};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+
+pub const CHAT_CLAIM: &str = "chat";
+pub const HISTORY_CAP: usize = 40;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatMsg {
@@ -118,4 +124,206 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+pub struct ChatEntry {
+    pub who: String,
+    pub body: String,
+}
+
+#[derive(Resource, Default)]
+pub struct ChatOverlayState {
+    pub buffer: String,
+    pub history: VecDeque<ChatEntry>,
+    just_focused: bool,
+}
+
+#[derive(Component)]
+struct ChatOverlay;
+
+#[derive(Component)]
+struct ChatHistoryText;
+
+#[derive(Component)]
+struct ChatInputText;
+
+#[derive(Default)]
+pub struct ChatOverlayPlugin {
+    pub initial_history: Vec<String>,
+}
+
+impl Plugin for ChatOverlayPlugin {
+    fn build(&self, app: &mut App) {
+        let mut state = ChatOverlayState::default();
+        for line in &self.initial_history {
+            state.history.push_back(ChatEntry {
+                who: "build".to_string(),
+                body: line.clone(),
+            });
+        }
+        app.insert_resource(state);
+        app.add_message::<OutgoingChat>();
+        app.add_message::<IncomingChat>();
+        app.add_systems(Startup, spawn_overlay);
+        app.add_systems(
+            Update,
+            (focus_on_intent, type_when_focused, receive_incoming, render_overlay).chain(),
+        );
+    }
+}
+
+fn spawn_overlay(mut commands: Commands) {
+    commands
+        .spawn((
+            ChatOverlay,
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(8.0),
+                bottom: Val::Px(8.0),
+                width: Val::Px(320.0),
+                height: Val::Px(180.0),
+                padding: UiRect::all(Val::Px(10.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(4.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75)),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                ChatHistoryText,
+                Text::new("(no messages)"),
+                TextFont {
+                    font_size: FontSize::Px(12.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.75, 0.8, 0.9)),
+            ));
+            p.spawn((
+                ChatInputText,
+                Text::new("press T to focus, Esc to blur"),
+                TextFont {
+                    font_size: FontSize::Px(12.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.5, 0.55, 0.7)),
+            ));
+        });
+}
+
+fn focus_on_intent(
+    mut reader: MessageReader<IntentEvent>,
+    mut cap: ResMut<InputCapture>,
+    mut state: ResMut<ChatOverlayState>,
+) {
+    for IntentEvent(intent) in reader.read() {
+        if *intent == Intent::ChatFocus {
+            cap.claim(CHAT_CLAIM);
+            state.just_focused = true;
+        }
+    }
+}
+
+fn type_when_focused(
+    cap: Res<InputCapture>,
+    mut reader: MessageReader<KeyboardInput>,
+    mut state: ResMut<ChatOverlayState>,
+    mut writer: MessageWriter<OutgoingChat>,
+) {
+    let focused = cap.claimants().any(|c| c == CHAT_CLAIM);
+    if !focused {
+        for _ in reader.read() {}
+        return;
+    }
+    if state.just_focused {
+        state.just_focused = false;
+        for _ in reader.read() {}
+        return;
+    }
+    for ev in reader.read() {
+        if ev.state != ButtonState::Pressed {
+            continue;
+        }
+        match ev.key_code {
+            KeyCode::Backspace => {
+                state.buffer.pop();
+            }
+            KeyCode::Enter => {
+                if !state.buffer.is_empty() {
+                    let body = std::mem::take(&mut state.buffer);
+                    state.history.push_back(ChatEntry {
+                        who: "me".to_string(),
+                        body: body.clone(),
+                    });
+                    if state.history.len() > HISTORY_CAP {
+                        state.history.pop_front();
+                    }
+                    writer.write(OutgoingChat(body));
+                }
+            }
+            KeyCode::Escape => {}
+            _ => {
+                if let Some(text) = &ev.text {
+                    for c in text.chars() {
+                        if !c.is_control() {
+                            state.buffer.push(c);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn receive_incoming(
+    mut reader: MessageReader<IncomingChat>,
+    mut state: ResMut<ChatOverlayState>,
+) {
+    for IncomingChat(msg) in reader.read() {
+        let short_peer: String = msg.peer.chars().take(8).collect();
+        state.history.push_back(ChatEntry {
+            who: short_peer,
+            body: msg.body.clone(),
+        });
+        if state.history.len() > HISTORY_CAP {
+            state.history.pop_front();
+        }
+    }
+}
+
+fn render_overlay(
+    state: Res<ChatOverlayState>,
+    cap: Res<InputCapture>,
+    mut history_texts: Query<&mut Text, (With<ChatHistoryText>, Without<ChatInputText>)>,
+    mut input_texts: Query<&mut Text, (With<ChatInputText>, Without<ChatHistoryText>)>,
+) {
+    if !state.is_changed() && !cap.is_changed() {
+        return;
+    }
+    let history_body = if state.history.is_empty() {
+        "(no messages)".to_string()
+    } else {
+        state
+            .history
+            .iter()
+            .map(|e| format!("{}: {}", e.who, e.body))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    for mut t in &mut history_texts {
+        if t.0 != history_body {
+            t.0 = history_body.clone();
+        }
+    }
+    let focused = cap.claimants().any(|c| c == CHAT_CLAIM);
+    let input_body = if focused {
+        format!("> {}_", state.buffer)
+    } else {
+        "press T to focus, Esc to blur".to_string()
+    };
+    for mut t in &mut input_texts {
+        if t.0 != input_body {
+            t.0 = input_body.clone();
+        }
+    }
 }

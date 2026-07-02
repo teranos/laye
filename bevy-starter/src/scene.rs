@@ -4,6 +4,7 @@ use bevy::log::LogPlugin;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::WindowPlugin;
+use bevy_chat::ChatOverlayPlugin;
 use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
 use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
@@ -42,6 +43,13 @@ pub fn build_and_run_app() {
             ObservabilityPlugin,
             DrawerPlugin,
             DrawerOverlayPlugin,
+            ChatOverlayPlugin {
+                initial_history: vec![format!(
+                    "{} · {}",
+                    &env!("LAYE_COMMIT_SHA")[..7.min(env!("LAYE_COMMIT_SHA").len())],
+                    env!("LAYE_BUILT_AT")
+                )],
+            },
         ))
         .add_systems(Startup, (setup_scene, seed_drawer))
         .add_systems(Update, (move_player_on_wasd, follow_player_with_camera).chain());
