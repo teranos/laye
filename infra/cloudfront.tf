@@ -64,6 +64,21 @@ resource "aws_cloudfront_origin_access_control" "bevy_starter" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_function" "bevy_starter_index_rewrite" {
+  name    = "bevy-starter-index-rewrite"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      if (request.uri.endsWith('/')) {
+        request.uri = request.uri + 'index.html';
+      }
+      return request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_distribution" "bevy_starter" {
   enabled             = true
   comment             = "bevy-starter static bundle"
@@ -88,6 +103,11 @@ resource "aws_cloudfront_distribution" "bevy_starter" {
     cache_policy_id = data.aws_cloudfront_cache_policy.caching_optimized.id
 
     compress = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.bevy_starter_index_rewrite.arn
+    }
   }
 
   restrictions {
