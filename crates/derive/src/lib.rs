@@ -2,6 +2,32 @@ use libp2p_identity::Keypair;
 
 const INFO_PREFIX: &[u8] = b"laye-derive/v1|";
 
+#[derive(Debug, thiserror::Error)]
+pub enum PhraseError {
+    #[error("bip39 parse: {0}")]
+    Parse(#[from] bip39::Error),
+    #[error("phrase yields {got}-byte entropy; laye-derive requires 32 bytes (24 words)")]
+    WrongEntropyLength { got: usize },
+}
+
+pub fn seed_to_phrase(seed: &[u8; 32]) -> String {
+    let Ok(m) = bip39::Mnemonic::from_entropy(seed) else {
+        unreachable!("bip39 Mnemonic::from_entropy accepts any 32-byte input");
+    };
+    m.to_string()
+}
+
+pub fn phrase_to_seed(phrase: &str) -> Result<[u8; 32], PhraseError> {
+    let m = bip39::Mnemonic::parse(phrase)?;
+    let (entropy, len) = m.to_entropy_array();
+    if len != 32 {
+        return Err(PhraseError::WrongEntropyLength { got: len });
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&entropy[..32]);
+    Ok(out)
+}
+
 pub fn derive_ed25519(seed: &[u8; 32], purpose: &str) -> Keypair {
     let hkdf = hkdf::Hkdf::<sha2::Sha256>::new(None, seed);
     let mut info = Vec::with_capacity(INFO_PREFIX.len() + purpose.len());
@@ -60,6 +86,45 @@ mod tests {
                 0xd1, 0x9e, 0x54, 0x29,
             ],
         );
+    }
+
+    #[test]
+    fn phrase_seed_round_trip() {
+        let seed = [42u8; 32];
+        let phrase = seed_to_phrase(&seed);
+        let recovered = phrase_to_seed(&phrase).unwrap();
+        assert_eq!(seed, recovered);
+    }
+
+    #[test]
+    fn phrase_from_zero_seed_is_24_words() {
+        let phrase = seed_to_phrase(&[0u8; 32]);
+        assert_eq!(phrase.split_whitespace().count(), 24);
+    }
+
+    #[test]
+    fn canonical_bip39_vector_zero_entropy() {
+        // Public BIP39 spec vector for 32 bytes of zero entropy.
+        // This is the phrase every human sees when they mint a fresh
+        // laye identity on a machine with no entropy (test env only).
+        assert_eq!(
+            seed_to_phrase(&[0u8; 32]),
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+        );
+    }
+
+    #[test]
+    fn invalid_phrase_errors() {
+        assert!(phrase_to_seed("not a real bip39 phrase at all here nope nope").is_err());
+    }
+
+    #[test]
+    fn twelve_word_phrase_is_rejected() {
+        // 24 words = 32-byte entropy is our contract. 12-word phrases
+        // (16-byte entropy) are valid BIP39 but the wrong shape for
+        // laye-derive: they'd silently give half the seed material.
+        let twelve = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        assert!(phrase_to_seed(twelve).is_err());
     }
 
     #[test]

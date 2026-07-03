@@ -12,4 +12,5 @@ workspace = true
 libp2p-identity = { version = "=0.2.14", features = ["ed25519"] }
 hkdf = "=0.12.4"
 sha2 = "=0.10.9"
+bip39 = "=2.2.0"
 thiserror = { workspace = true }
