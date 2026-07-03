@@ -3876,6 +3876,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "laye-derive"
+version = "0.0.0"
+dependencies = [
+ "hkdf",
+ "libp2p-identity",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "laye-input"
 version = "0.0.0"
 

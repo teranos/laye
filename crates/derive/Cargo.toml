@@ -1,0 +1,15 @@
+[package]
+name = "laye-derive"
+version = "0.0.0"
+edition = "2024"
+description = "HKDF derivation from root seed + purpose string to Ed25519."
+license = "MIT"
+
+[lints]
+workspace = true
+
+[dependencies]
+libp2p-identity = { version = "=0.2.14", features = ["ed25519"] }
+hkdf = "=0.12.4"
+sha2 = "=0.10.9"
+thiserror = { workspace = true }
