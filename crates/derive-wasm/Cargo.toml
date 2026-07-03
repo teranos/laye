@@ -1,0 +1,16 @@
+[package]
+name = "laye-derive-wasm"
+version = "0.0.0"
+edition = "2024"
+description = "wasm-bindgen shim over laye-derive for the browser identity broker."
+license = "MIT"
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+laye-derive = { path = "../derive" }
+wasm-bindgen = "=0.2.121"

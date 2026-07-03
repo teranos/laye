@@ -3913,6 +3913,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "laye-derive-wasm"
+version = "0.0.0"
+dependencies = [
+ "laye-derive",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "laye-input"
 version = "0.0.0"
 
