@@ -11,10 +11,39 @@ use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
 
+pub const RELAY_MULTIADDR: &str =
+    "/dns4/relaye.sbvh.nl/tcp/443/wss/p2p/12D3KooWC6UBnnmhhv3BAfYKyW1bFBD4GtC5waiEgQWJCb7Hbqaf";
+
+pub const CHAT_TOPIC: &str = "rave-chat/v1";
+pub const POSITIONS_TOPIC: &str = "rave-positions/v1";
+
 #[derive(Component)]
 struct Player;
 
-pub fn build_and_run_app() {
+#[cfg(target_arch = "wasm32")]
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StarterPosition {
+    peer: String,
+    x: f32,
+    y: f32,
+    z: f32,
+    at_ms: u64,
+}
+
+#[derive(Default)]
+struct RemoteEntry {
+    pos: Vec3,
+    last_seen_ms: u64,
+    entity: Option<Entity>,
+}
+
+#[derive(bevy::ecs::resource::Resource, Default)]
+struct RemotePlayers(std::collections::HashMap<String, RemoteEntry>);
+
+#[derive(Component)]
+struct RemotePlayerCell;
+
+pub fn build_and_run_app(_identity_bytes: Option<Vec<u8>>) {
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::srgb(0.01, 0.02, 0.05)))
         .add_plugins((
@@ -50,10 +79,137 @@ pub fn build_and_run_app() {
                     env!("LAYE_BUILT_AT")
                 )],
             },
-        ))
-        .add_systems(Startup, (setup_scene, seed_drawer))
+        ));
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        app.add_plugins(bevy_libp2p::LibP2PPlugin {
+            bootstrap_addrs: vec![RELAY_MULTIADDR.to_string()],
+            identity_bytes: _identity_bytes,
+            topics: vec![
+                bevy_libp2p::Topic(CHAT_TOPIC.to_string()),
+                bevy_libp2p::Topic(POSITIONS_TOPIC.to_string()),
+            ],
+            identify_protocol: "/laye-starter/1.0.0".to_string(),
+        });
+        app.add_plugins(bevy_chat::ChatPlugin {
+            topic: CHAT_TOPIC.to_string(),
+            max_body_bytes: 512,
+        });
+        app.insert_resource(RemotePlayers::default());
+        app.add_systems(
+            Update,
+            (
+                publish_self_position,
+                drain_position_events,
+                render_remote_players,
+            )
+                .chain(),
+        );
+    }
+
+    app.add_systems(Startup, (setup_scene, seed_drawer))
         .add_systems(Update, (move_player_on_wasd, follow_player_with_camera).chain());
     app.run();
+}
+
+#[cfg(target_arch = "wasm32")]
+fn publish_self_position(
+    time: Res<Time>,
+    mut acc: Local<f32>,
+    players: Query<&Transform, With<Player>>,
+    net: Res<bevy_libp2p::LayeNet>,
+) {
+    *acc += time.delta_secs();
+    if *acc < 0.1 {
+        return;
+    }
+    *acc = 0.0;
+    let Some(tf) = players.iter().next() else {
+        return;
+    };
+    let pos = StarterPosition {
+        peer: net.identity().0.clone(),
+        x: tf.translation.x,
+        y: tf.translation.y,
+        z: tf.translation.z,
+        at_ms: js_sys::Date::now() as u64,
+    };
+    if let Ok(bytes) = serde_json::to_vec(&pos) {
+        let _ = net.publish(&bevy_libp2p::Topic(POSITIONS_TOPIC.to_string()), &bytes);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn drain_position_events(
+    net: Res<bevy_libp2p::LayeNet>,
+    mut reader: MessageReader<bevy_libp2p::LibP2PMessage>,
+    mut remotes: ResMut<RemotePlayers>,
+) {
+    let self_peer = net.identity().0.clone();
+    let now_ms = js_sys::Date::now() as u64;
+    for msg in reader.read() {
+        if let bevy_libp2p::NetEvent::Message { topic, bytes, .. } = &msg.0
+            && topic.0 == POSITIONS_TOPIC
+            && let Ok(pos) = serde_json::from_slice::<StarterPosition>(bytes)
+            && pos.peer != self_peer
+        {
+            let entry = remotes.0.entry(pos.peer.clone()).or_default();
+            entry.pos = Vec3::new(pos.x, pos.y, pos.z);
+            entry.last_seen_ms = now_ms;
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn render_remote_players(
+    mut commands: Commands,
+    mut remotes: ResMut<RemotePlayers>,
+    mut transforms: Query<&mut Transform, With<RemotePlayerCell>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let now_ms = js_sys::Date::now() as u64;
+    let stale_cutoff = now_ms.saturating_sub(30_000);
+    let stale_peers: Vec<String> = remotes
+        .0
+        .iter()
+        .filter(|(_, e)| e.last_seen_ms < stale_cutoff)
+        .map(|(p, _)| p.clone())
+        .collect();
+    for peer in stale_peers {
+        if let Some(entry) = remotes.0.remove(&peer)
+            && let Some(entity) = entry.entity
+        {
+            commands.entity(entity).despawn();
+        }
+    }
+    for entry in remotes.0.values_mut() {
+        match entry.entity {
+            None => {
+                let mesh = meshes.add(Sphere::new(0.6));
+                let mat = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.9, 0.3, 0.85),
+                    emissive: LinearRgba::rgb(1.4, 0.4, 1.2),
+                    ..default()
+                });
+                let id = commands
+                    .spawn((
+                        Mesh3d(mesh),
+                        MeshMaterial3d(mat),
+                        Transform::from_translation(entry.pos),
+                        RemotePlayerCell,
+                    ))
+                    .id();
+                entry.entity = Some(id);
+            }
+            Some(entity) => {
+                if let Ok(mut tf) = transforms.get_mut(entity) {
+                    tf.translation = entry.pos;
+                }
+            }
+        }
+    }
 }
 
 fn seed_drawer(mut log: ResMut<ErrorLog>) {

@@ -99,26 +99,29 @@ pub fn run() {
 
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
-        let status = match load_or_mint_identity().await {
-            Ok(bytes) => match laye_me::load(&bytes) {
-                Ok(k) => match k.public().try_into_ed25519() {
-                    Ok(ed) => format!(
-                        "identity {} bytes, pubkey {} bytes — starting scene",
-                        bytes.len(),
-                        ed.to_bytes().len()
-                    ),
-                    Err(e) => format!("non-Ed25519 public: {e}"),
-                },
-                Err(e) => format!("identity load error: {e}"),
-            },
-            Err(e) => format!("identity error: {e}"),
+        let (status, identity_bytes) = match load_or_mint_identity().await {
+            Ok(bytes) => {
+                let s = match laye_me::load(&bytes) {
+                    Ok(k) => match k.public().try_into_ed25519() {
+                        Ok(ed) => format!(
+                            "identity {} bytes, pubkey {} bytes — starting scene",
+                            bytes.len(),
+                            ed.to_bytes().len()
+                        ),
+                        Err(e) => format!("non-Ed25519 public: {e}"),
+                    },
+                    Err(e) => format!("identity load error: {e}"),
+                };
+                (s, Some(bytes))
+            }
+            Err(e) => (format!("identity error: {e}"), None),
         };
         js_status(&status);
-        scene::build_and_run_app();
+        scene::build_and_run_app(identity_bytes);
     });
 
     #[cfg(not(target_arch = "wasm32"))]
-    scene::build_and_run_app();
+    scene::build_and_run_app(None);
 }
 
 #[cfg(target_arch = "wasm32")]
