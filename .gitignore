@@ -2,3 +2,5 @@
 .DS_Store
 infra/.terraform/
 bevy-starter/dist/
+broker/dist/
+.identity-*.txt

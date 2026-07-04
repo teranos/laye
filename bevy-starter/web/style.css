@@ -89,6 +89,30 @@ button:hover { background: #3a1818; }
 #bevy-starter-loading progress::-webkit-progress-value { background: #6f9; }
 #bevy-starter-loading progress::-moz-progress-bar { background: #6f9; }
 body.loaded #bevy-starter-loading { display: none; }
+#login-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1em;
+  background: #050608;
+  z-index: 9999;
+}
+#login-screen h1 { font-size: 1.4em; color: #ddd; margin: 0 0 1em; }
+#login-screen button.login {
+  min-width: 240px;
+  background: #1a1a24;
+  color: #ddd;
+  border: 1px solid #444;
+}
+#login-screen button.login:hover { background: #22222e; }
+body.identified #login-screen { display: none; }
+body:not(.identified) #bevy,
+body:not(.identified) #overlay,
+body:not(.identified) #bevy-starter-loading,
+body:not(.identified) #version-switcher { display: none; }
 #version-switcher {
   position: fixed;
   top: 1em;

@@ -6,6 +6,117 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <div id="login-screen">
+      <h1>bevy-starter</h1>
+      <button class="login" data-provider="atproto">Log in with ATProto</button>
+      <button class="login" data-provider="mastodon">Log in with Mastodon</button>
+    </div>
+
+    <script type="module">
+      import { BrowserOAuthClient } from "https://esm.sh/@atproto/oauth-client-browser@0.3.19";
+
+      const DB = "bevy-starter";
+      const STORE = "identity";
+      const KEY = "self";
+
+      function openDb() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(DB, 1);
+          req.onupgradeneeded = (ev) => {
+            const db = ev.target.result;
+            if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+      async function loadIdentity() {
+        const db = await openDb();
+        return await new Promise((resolve, reject) => {
+          const req = db.transaction(STORE, "readonly").objectStore(STORE).get(KEY);
+          req.onsuccess = () => resolve(req.result ?? null);
+          req.onerror = () => reject(req.error);
+        });
+      }
+      async function saveIdentity(record) {
+        const db = await openDb();
+        await new Promise((resolve, reject) => {
+          const req = db.transaction(STORE, "readwrite").objectStore(STORE).put(record, KEY);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      const clientMetadataUrl = new URL("./oauth-client-metadata.json", location.href).toString();
+      const atproto = new BrowserOAuthClient({
+        clientMetadata: await (await fetch(clientMetadataUrl)).json(),
+        handleResolver: "https://bsky.social",
+      });
+
+      const initResult = await atproto.init();
+      if (initResult?.session) {
+        const s = initResult.session;
+        await saveIdentity({ provider: "atproto", did: s.did, handle: s.handle ?? null });
+      }
+
+      const existing = await loadIdentity();
+      if (existing) document.body.classList.add("identified");
+
+      document.querySelector('[data-provider="atproto"]').onclick = async () => {
+        const handle = prompt("your ATProto handle (e.g. you.bsky.social):");
+        if (!handle) return;
+        await atproto.signIn(handle, { scope: "atproto" });
+      };
+      document.querySelector('[data-provider="mastodon"]').onclick = async () => {
+        const instance = (prompt("your Mastodon instance (e.g. mastodon.social):") || "").trim();
+        if (!instance) return;
+        const app = await (await fetch(`https://${instance}/api/v1/apps`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            client_name: "bevy-starter",
+            redirect_uris: location.origin + location.pathname,
+            scopes: "read",
+            website: "https://bevy-starter.sbvh.nl/",
+          }),
+        })).json();
+        sessionStorage.setItem("mastodon-app", JSON.stringify({ instance, client_id: app.client_id, client_secret: app.client_secret }));
+        const params = new URLSearchParams({
+          client_id: app.client_id,
+          scope: "read",
+          redirect_uri: location.origin + location.pathname,
+          response_type: "code",
+        });
+        location.href = `https://${instance}/oauth/authorize?${params.toString()}`;
+      };
+
+      const url = new URL(location.href);
+      const code = url.searchParams.get("code");
+      const mastoState = sessionStorage.getItem("mastodon-app");
+      if (code && mastoState) {
+        const { instance, client_id, client_secret } = JSON.parse(mastoState);
+        sessionStorage.removeItem("mastodon-app");
+        const tokenResp = await (await fetch(`https://${instance}/oauth/token`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            client_id, client_secret,
+            redirect_uri: location.origin + location.pathname,
+            grant_type: "authorization_code",
+            code,
+            scope: "read",
+          }),
+        })).json();
+        const cred = await (await fetch(`https://${instance}/api/v1/accounts/verify_credentials`, {
+          headers: { authorization: `Bearer ${tokenResp.access_token}` },
+        })).json();
+        await saveIdentity({ provider: "mastodon", instance, id: cred.id, handle: cred.acct });
+        url.searchParams.delete("code");
+        url.searchParams.delete("state");
+        history.replaceState(null, "", url.toString());
+        document.body.classList.add("identified");
+      }
+    </script>
     <canvas id="bevy"></canvas>
     <div id="version-switcher">
       <select id="version-select"><option>loading…</option></select>
