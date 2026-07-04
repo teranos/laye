@@ -7,7 +7,21 @@ use bevy::window::WindowPlugin;
 use bevy_chat::ChatOverlayPlugin;
 use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
+use bevy_me::{Identity, IdentityPlugin, IdentityRes};
 use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
+
+#[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
+enum AppState {
+    #[default]
+    Login,
+    InGame,
+}
+
+#[derive(Component)]
+struct LoginScreen;
+
+#[derive(Component)]
+struct LoginButton;
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
 
@@ -79,7 +93,14 @@ pub fn build_and_run_app(_identity_bytes: Option<Vec<u8>>) {
                     env!("LAYE_BUILT_AT")
                 )],
             },
+            IdentityPlugin,
         ));
+
+    app.init_state::<AppState>();
+    app.add_systems(OnEnter(AppState::Login), spawn_login_screen);
+    app.add_systems(OnExit(AppState::Login), despawn_login_screen);
+    app.add_systems(Update, on_login_pressed.run_if(in_state(AppState::Login)));
+    app.add_systems(OnEnter(AppState::InGame), setup_scene);
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -104,13 +125,90 @@ pub fn build_and_run_app(_identity_bytes: Option<Vec<u8>>) {
                 drain_position_events,
                 render_remote_players,
             )
-                .chain(),
+                .chain()
+                .run_if(in_state(AppState::InGame)),
         );
     }
 
-    app.add_systems(Startup, (setup_scene, seed_drawer))
-        .add_systems(Update, (move_player_on_wasd, follow_player_with_camera).chain());
+    app.add_systems(Startup, seed_drawer).add_systems(
+        Update,
+        (move_player_on_wasd, follow_player_with_camera)
+            .chain()
+            .run_if(in_state(AppState::InGame)),
+    );
     app.run();
+}
+
+fn spawn_login_screen(mut commands: Commands) {
+    commands
+        .spawn((
+            LoginScreen,
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                row_gap: Val::Px(20.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.02, 0.03, 0.06)),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                Text::new("bevy-starter"),
+                TextFont {
+                    font_size: FontSize::Px(22.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.85, 0.85, 0.85)),
+            ));
+            p.spawn((
+                LoginButton,
+                Button,
+                Node {
+                    padding: UiRect::axes(Val::Px(24.0), Val::Px(10.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.1, 0.15, 0.2)),
+            ))
+            .with_children(|pp| {
+                pp.spawn((
+                    Text::new("Log in"),
+                    TextFont {
+                        font_size: FontSize::Px(14.0),
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                ));
+            });
+        });
+}
+
+fn despawn_login_screen(mut commands: Commands, screens: Query<Entity, With<LoginScreen>>) {
+    for e in &screens {
+        commands.entity(e).despawn();
+    }
+}
+
+fn on_login_pressed(
+    q: Query<&Interaction, (Changed<Interaction>, With<LoginButton>)>,
+    mut next: ResMut<NextState<AppState>>,
+    mut identity: ResMut<IdentityRes>,
+) {
+    for i in &q {
+        if *i == Interaction::Pressed {
+            identity.0 = Some(Identity::External {
+                provider: "test".to_string(),
+                canonical_id: "you".to_string(),
+                handle: Some("you".to_string()),
+            });
+            next.set(AppState::InGame);
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 laye-me = { path = "../crates/me" }
+bevy-me = { path = "../crates/bevy-me" }
 bevy-input-capture = { path = "../crates/bevy-input-capture" }
 bevy-observability = { path = "../crates/bevy-observability" }
 bevy-drawer = { path = "../crates/bevy-drawer" }
