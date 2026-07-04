@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-src 'self'; frame-ancestors 'none';"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <title>laye · broker test harness</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 960px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        background: #0a0e14;
+        color: #b3b1ad;
+      }
+      h1 { font-size: 1.1rem; }
+      iframe { width: 100%; height: 360px; border: 1px solid #23272e; background: #0d1017; }
+      .controls { margin: 1rem 0; }
+      input, button {
+        padding: .4rem .8rem;
+        background: #23272e;
+        color: #b3b1ad;
+        border: 1px solid #45505a;
+      }
+      pre {
+        background: #0d1017;
+        border: 1px solid #23272e;
+        padding: 1rem;
+        overflow-x: auto;
+        font-family: ui-monospace, monospace;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>laye · broker test harness</h1>
+    <p>Loads <code>./index.html</code> in an iframe, drives it via <code>postMessage</code>. Requires the broker to have been visited once so a seed exists in IndexedDB.</p>
+
+    <iframe id="broker" src="./"></iframe>
+
+    <div class="controls">
+      <label>purpose: <input id="purpose" value="laye/test" size="30" /></label>
+      <button id="get-pubkey">get pubkey</button>
+      <button id="sign">sign "hello"</button>
+    </div>
+
+    <pre id="out">no request yet</pre>
+
+    <script type="module" src="./test.js"></script>
+  </body>
+</html>

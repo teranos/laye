@@ -1,0 +1,112 @@
+name: deploy-broker
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'broker/**'
+      - 'crates/**'
+      - '.github/workflows/deploy-broker.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-broker-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  STATIC_BUCKET: laye-me-static
+  STATIC_DISTRIBUTION_ID: ${{ vars.RELAYE_DISTRIBUTION_ID }}
+  DEPLOY_ROLE_ARN: arn:aws:iam::548351057127:role/relaye-github-deploy
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: jetli/wasm-bindgen-action@v0.2.0
+        with:
+          version: '0.2.121'
+
+      - name: Build wasm
+        run: |
+          cargo build --release --target wasm32-unknown-unknown --lib --package laye-derive-wasm
+          mkdir -p broker/dist
+          wasm-bindgen target/wasm32-unknown-unknown/release/laye_derive_wasm.wasm \
+            --target web --out-dir broker/dist --no-typescript
+          cp broker/index.html broker/test.html broker/broker.js broker/test.js broker/dist/
+
+      - name: Inject SRI hashes into HTML
+        run: |
+          SRI_BROKER="sha384-$(openssl dgst -sha384 -binary broker/dist/broker.js | openssl base64 -A)"
+          SRI_TEST="sha384-$(openssl dgst -sha384 -binary broker/dist/test.js | openssl base64 -A)"
+          sed -i "s|<script type=\"module\" src=\"./broker.js\"></script>|<script type=\"module\" src=\"./broker.js\" integrity=\"${SRI_BROKER}\"></script>|" broker/dist/index.html
+          sed -i "s|<script type=\"module\" src=\"./test.js\"></script>|<script type=\"module\" src=\"./test.js\" integrity=\"${SRI_TEST}\"></script>|" broker/dist/test.html
+          grep 'integrity=' broker/dist/index.html
+          grep 'integrity=' broker/dist/test.html
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compute deploy target
+        id: target
+        run: |
+          REF="${{ github.ref_name }}"
+          if [ "$REF" = "main" ]; then
+            echo "s3_prefix=me/" >> "$GITHUB_OUTPUT"
+            echo "invalidation_path=/me/*" >> "$GITHUB_OUTPUT"
+            echo "url=https://relaye.sbvh.nl/me/" >> "$GITHUB_OUTPUT"
+          else
+            echo "s3_prefix=me/${REF}/" >> "$GITHUB_OUTPUT"
+            echo "invalidation_path=/me/${REF}/*" >> "$GITHUB_OUTPUT"
+            echo "url=https://relaye.sbvh.nl/me/${REF}/" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync dist to S3
+        run: |
+          PREFIX="${{ steps.target.outputs.s3_prefix }}"
+          aws s3 sync broker/dist/ "s3://${{ env.STATIC_BUCKET }}/${PREFIX}" \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html" --exclude "test.html"
+          aws s3 cp broker/dist/index.html "s3://${{ env.STATIC_BUCKET }}/${PREFIX}index.html" \
+            --cache-control "public, max-age=60, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+          aws s3 cp broker/dist/test.html "s3://${{ env.STATIC_BUCKET }}/${PREFIX}test.html" \
+            --cache-control "public, max-age=60, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+      - name: Invalidate CloudFront
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${{ env.STATIC_DISTRIBUTION_ID }}" \
+            --paths "${{ steps.target.outputs.invalidation_path }}" \
+            --query 'Invalidation.Id' \
+            --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${{ env.STATIC_DISTRIBUTION_ID }}" \
+            --id "$INVALIDATION_ID"
+
+      - name: Summarize
+        run: |
+          {
+            echo "## Broker deployed"
+            echo ""
+            echo "- Live at: ${{ steps.target.outputs.url }}"
+            echo "- Test harness: ${{ steps.target.outputs.url }}test.html"
+          } >> "$GITHUB_STEP_SUMMARY"
