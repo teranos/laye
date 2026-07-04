@@ -532,6 +532,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy-me"
+version = "0.0.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "laye-me",
+]
+
+[[package]]
 name = "bevy-observability"
 version = "0.0.0"
 dependencies = [
