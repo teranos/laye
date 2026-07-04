@@ -10,4 +10,6 @@ workspace = true
 
 [dependencies]
 libp2p-identity = { version = "=0.2.14", features = ["ed25519", "peerid", "rand"] }
+hkdf = "=0.12.4"
+sha2 = "=0.10.9"
 thiserror = { workspace = true }

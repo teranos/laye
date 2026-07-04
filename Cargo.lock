@@ -3883,7 +3883,9 @@ version = "0.0.0"
 name = "laye-me"
 version = "0.0.0"
 dependencies = [
+ "hkdf",
  "libp2p-identity",
+ "sha2",
  "thiserror 2.0.18",
 ]
 
