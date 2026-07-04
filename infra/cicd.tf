@@ -61,6 +61,29 @@ resource "aws_iam_role_policy" "github_deploy" {
         ]
         Resource = aws_cloudfront_distribution.bevy_starter.arn
       },
+      {
+        Sid    = "MeStaticWrite"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:GetObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          aws_s3_bucket.me_static.arn,
+          "${aws_s3_bucket.me_static.arn}/*",
+        ]
+      },
+      {
+        Sid    = "RelayeInvalidate"
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateInvalidation",
+          "cloudfront:GetInvalidation",
+        ]
+        Resource = aws_cloudfront_distribution.relaye.arn
+      },
     ]
   })
 }

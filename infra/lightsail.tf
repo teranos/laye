@@ -31,14 +31,18 @@ resource "aws_lightsail_instance_public_ports" "relaye" {
   instance_name = aws_lightsail_instance.relaye.name
 
   port_info {
-    from_port = 22
-    to_port   = 22
-    protocol  = "tcp"
+    from_port  = 22
+    to_port    = 22
+    protocol   = "tcp"
+    cidrs      = ["0.0.0.0/0"]
+    ipv6_cidrs = ["::/0"]
   }
 
   port_info {
-    from_port = var.relaye_origin_port
-    to_port   = var.relaye_origin_port
-    protocol  = "tcp"
+    from_port  = var.relaye_origin_port
+    to_port    = var.relaye_origin_port
+    protocol   = "tcp"
+    cidrs      = ["0.0.0.0/0"]
+    ipv6_cidrs = ["::/0"]
   }
 }

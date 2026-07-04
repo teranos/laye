@@ -50,3 +50,37 @@ resource "aws_s3_bucket_policy" "bevy_starter_static" {
     }]
   })
 }
+
+resource "aws_s3_bucket" "me_static" {
+  bucket = var.me_bucket
+}
+
+resource "aws_s3_bucket_public_access_block" "me_static" {
+  bucket                  = aws_s3_bucket.me_static.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "me_static" {
+  bucket = aws_s3_bucket.me_static.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowCloudFrontServicePrincipalRead"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudfront.amazonaws.com"
+      }
+      Action   = ["s3:GetObject"]
+      Resource = "${aws_s3_bucket.me_static.arn}/*"
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.relaye.arn
+        }
+      }
+    }]
+  })
+}
