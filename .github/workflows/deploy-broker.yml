@@ -1,0 +1,73 @@
+name: deploy-broker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'broker/**'
+      - '.github/workflows/deploy-broker.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-broker
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  BROKER_BUCKET: laye-me-broker-static
+  RELAYE_DISTRIBUTION_ID: ${{ vars.RELAYE_DISTRIBUTION_ID }}
+  DEPLOY_ROLE_ARN: arn:aws:iam::548351057127:role/relaye-github-deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute build vars
+        id: buildvars
+        run: |
+          echo "short_sha=$(echo "${{ github.sha }}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Emit build-info.json
+        run: |
+          cat > broker/build-info.json <<EOF
+          {"sha":"${{ github.sha }}","short":"${{ steps.buildvars.outputs.short_sha }}","ref":"${{ github.ref_name }}","built_at":"${{ steps.buildvars.outputs.built_at }}"}
+          EOF
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync broker to S3
+        run: |
+          aws s3 sync broker/ "s3://${{ env.BROKER_BUCKET }}/" \
+            --delete \
+            --cache-control "public, max-age=60, must-revalidate"
+
+      - name: Invalidate CloudFront /me/*
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${{ env.RELAYE_DISTRIBUTION_ID }}" \
+            --paths "/me/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${{ env.RELAYE_DISTRIBUTION_ID }}" \
+            --id "$INVALIDATION_ID"
+
+      - name: Summarize
+        run: |
+          {
+            echo "## Broker deploy complete"
+            echo ""
+            echo "- Live at: https://relaye.sbvh.nl/me/"
+          } >> "$GITHUB_STEP_SUMMARY"
