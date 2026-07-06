@@ -50,3 +50,37 @@ resource "aws_s3_bucket_policy" "bevy_starter_static" {
     }]
   })
 }
+
+resource "aws_s3_bucket" "laye_broker" {
+  bucket = var.laye_broker_bucket
+}
+
+resource "aws_s3_bucket_public_access_block" "laye_broker" {
+  bucket                  = aws_s3_bucket.laye_broker.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "laye_broker" {
+  bucket = aws_s3_bucket.laye_broker.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowCloudFrontServicePrincipalRead"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudfront.amazonaws.com"
+      }
+      Action   = ["s3:GetObject"]
+      Resource = "${aws_s3_bucket.laye_broker.arn}/*"
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.relaye.arn
+        }
+      }
+    }]
+  })
+}

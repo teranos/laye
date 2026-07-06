@@ -10,9 +10,40 @@ data "aws_cloudfront_origin_request_policy" "all_viewer" {
   name = "Managed-AllViewer"
 }
 
+resource "aws_cloudfront_origin_access_control" "laye_broker" {
+  name                              = "laye-me-broker"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_function" "laye_broker_path_rewrite" {
+  name    = "laye-me-broker-path-rewrite"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+      if (uri === '/me' || uri === '/me/') {
+        request.uri = '/index.html';
+        return request;
+      }
+      if (uri.startsWith('/me/')) {
+        var stripped = uri.substring(3);
+        if (stripped.endsWith('/')) {
+          stripped = stripped + 'index.html';
+        }
+        request.uri = stripped;
+      }
+      return request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_distribution" "relaye" {
   enabled     = true
-  comment     = "laye libp2p relay (WebSocket)"
+  comment     = "laye libp2p relay (WebSocket) + /me/ broker origin"
   price_class = "PriceClass_100"
 
   aliases = [local.relaye_fqdn]
@@ -31,6 +62,12 @@ resource "aws_cloudfront_distribution" "relaye" {
     }
   }
 
+  origin {
+    domain_name              = aws_s3_bucket.laye_broker.bucket_regional_domain_name
+    origin_id                = "s3-laye-broker"
+    origin_access_control_id = aws_cloudfront_origin_access_control.laye_broker.id
+  }
+
   default_cache_behavior {
     target_origin_id       = "lightsail-relaye"
     viewer_protocol_policy = "https-only"
@@ -42,6 +79,24 @@ resource "aws_cloudfront_distribution" "relaye" {
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
 
     compress = false
+  }
+
+  ordered_cache_behavior {
+    path_pattern           = "/me/*"
+    target_origin_id       = "s3-laye-broker"
+    viewer_protocol_policy = "https-only"
+
+    allowed_methods = ["GET", "HEAD"]
+    cached_methods  = ["GET", "HEAD"]
+
+    cache_policy_id = data.aws_cloudfront_cache_policy.caching_optimized.id
+
+    compress = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.laye_broker_path_rewrite.arn
+    }
   }
 
   restrictions {

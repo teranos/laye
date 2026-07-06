@@ -34,3 +34,7 @@ output "bevy_starter_bucket" {
 output "bevy_starter_distribution_id" {
   value = aws_cloudfront_distribution.bevy_starter.id
 }
+
+output "laye_broker_bucket" {
+  value = aws_s3_bucket.laye_broker.id
+}

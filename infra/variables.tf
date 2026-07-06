@@ -64,3 +64,8 @@ variable "bevy_starter_bucket" {
   type    = string
   default = "laye-bevy-starter-static"
 }
+
+variable "laye_broker_bucket" {
+  type    = string
+  default = "laye-me-broker-static"
+}
