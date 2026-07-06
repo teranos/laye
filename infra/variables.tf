@@ -57,7 +57,7 @@ variable "github_repo" {
 
 variable "bevy_starter_subdomain" {
   type    = string
-  default = "bevy-starter"
+  default = "laye"
 }
 
 variable "bevy_starter_bucket" {
