@@ -9,13 +9,23 @@ pub enum MeError {
     Encode(String),
 }
 
-pub enum Identity {
-    Local(Keypair),
-    External {
-        provider: String,
-        canonical_id: String,
-        handle: Option<String>,
-    },
+#[derive(Default, Debug, Clone)]
+pub struct Identity {
+    pub links: Vec<ExternalLink>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternalLink {
+    pub provider: String,
+    pub canonical_id: String,
+    pub handle: Option<String>,
+    pub binding: SignedBinding,
+}
+
+#[derive(Debug, Clone)]
+pub struct SignedBinding {
+    pub peer_pubkey: [u8; 32],
+    pub signature: Vec<u8>,
 }
 
 pub fn fresh() -> Keypair {

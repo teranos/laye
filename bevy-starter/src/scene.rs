@@ -7,7 +7,7 @@ use bevy::window::WindowPlugin;
 use bevy_chat::ChatOverlayPlugin;
 use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
-use bevy_me::{Identity, IdentityPlugin, IdentityRes};
+use bevy_me::{ExternalLink, Identity, IdentityPlugin, IdentityRes, SignedBinding};
 use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
 
 #[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -158,19 +158,19 @@ fn spawn_login_screen(mut commands: Commands) {
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: Val::Px(20.0),
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::axes(Val::Px(0.0), Val::Px(80.0)),
                 ..default()
             },
         ))
         .with_children(|p| {
             p.spawn((
-                Text::new("bevy-starter"),
+                Text::new("laye"),
                 TextFont {
-                    font_size: FontSize::Px(22.0),
+                    font_size: FontSize::Px(48.0),
                     ..default()
                 },
-                TextColor(Color::srgb(0.85, 0.85, 0.85)),
+                TextColor(Color::srgb(0.9, 0.92, 1.0)),
             ));
             p.spawn((
                 LoginButton,
@@ -207,10 +207,16 @@ fn on_login_pressed(
 ) {
     for i in &q {
         if *i == Interaction::Pressed {
-            identity.0 = Some(Identity::External {
-                provider: "test".to_string(),
-                canonical_id: "you".to_string(),
-                handle: Some("you".to_string()),
+            identity.0 = Some(Identity {
+                links: vec![ExternalLink {
+                    provider: "test".to_string(),
+                    canonical_id: "you".to_string(),
+                    handle: Some("you".to_string()),
+                    binding: SignedBinding {
+                        peer_pubkey: [0u8; 32],
+                        signature: vec![],
+                    },
+                }],
             });
             next.set(AppState::InGame);
         }

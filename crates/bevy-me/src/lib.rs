@@ -1,7 +1,7 @@
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 
-pub use laye_me::Identity;
+pub use laye_me::{ExternalLink, Identity, SignedBinding};
 
 #[derive(Resource, Default)]
 pub struct IdentityRes(pub Option<Identity>);
@@ -37,10 +37,16 @@ mod tests {
         app.add_plugins(IdentityPlugin);
         {
             let mut res = app.world_mut().resource_mut::<IdentityRes>();
-            res.0 = Some(laye_me::Identity::External {
-                provider: "test".to_string(),
-                canonical_id: "you".to_string(),
-                handle: Some("you".to_string()),
+            res.0 = Some(Identity {
+                links: vec![ExternalLink {
+                    provider: "test".to_string(),
+                    canonical_id: "you".to_string(),
+                    handle: Some("you".to_string()),
+                    binding: SignedBinding {
+                        peer_pubkey: [0u8; 32],
+                        signature: vec![],
+                    },
+                }],
             });
         }
         let res = app.world().resource::<IdentityRes>();
