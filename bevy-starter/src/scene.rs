@@ -23,6 +23,9 @@ struct LoginScreen;
 #[derive(Component)]
 struct LoginButton;
 
+#[derive(Component)]
+struct LoginOrb;
+
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
 
 pub const RELAY_MULTIADDR: &str =
@@ -97,9 +100,13 @@ pub fn build_and_run_app(_identity_bytes: Option<Vec<u8>>) {
         ));
 
     app.init_state::<AppState>();
-    app.add_systems(OnEnter(AppState::Login), spawn_login_screen);
-    app.add_systems(OnExit(AppState::Login), despawn_login_screen);
-    app.add_systems(Update, on_login_pressed.run_if(in_state(AppState::Login)));
+    app.add_systems(Startup, setup_camera);
+    app.add_systems(OnEnter(AppState::Login), (spawn_login_screen, spawn_login_orb));
+    app.add_systems(OnExit(AppState::Login), (despawn_login_screen, despawn_login_orb));
+    app.add_systems(
+        Update,
+        (on_login_pressed, spin_login_orb).run_if(in_state(AppState::Login)),
+    );
     app.add_systems(OnEnter(AppState::InGame), setup_scene);
 
     #[cfg(target_arch = "wasm32")]
@@ -155,7 +162,6 @@ fn spawn_login_screen(mut commands: Commands) {
                 row_gap: Val::Px(20.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.02, 0.03, 0.06)),
         ))
         .with_children(|p| {
             p.spawn((
@@ -315,11 +321,7 @@ fn seed_drawer(mut log: ResMut<ErrorLog>) {
     log.emit(Severity::Note, "press ` or \\ to toggle this drawer");
 }
 
-fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
+fn setup_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Hdr,
@@ -336,7 +338,45 @@ fn setup_scene(
         },
         Transform::from_xyz(8.0, 20.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
 
+fn spawn_login_orb(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let torus_mesh = meshes.add(Torus::new(2.0, 0.4));
+    let torus_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.3, 0.5, 0.9),
+        emissive: LinearRgba::rgb(1.6, 2.2, 3.6),
+        ..default()
+    });
+    commands.spawn((
+        LoginOrb,
+        Mesh3d(torus_mesh),
+        MeshMaterial3d(torus_mat),
+        Transform::from_xyz(0.0, 2.0, 0.0),
+    ));
+}
+
+fn despawn_login_orb(mut commands: Commands, orbs: Query<Entity, With<LoginOrb>>) {
+    for e in &orbs {
+        commands.entity(e).despawn();
+    }
+}
+
+fn spin_login_orb(time: Res<Time>, mut orbs: Query<&mut Transform, With<LoginOrb>>) {
+    for mut t in &mut orbs {
+        t.rotate_local_y(time.delta_secs() * 0.6);
+        t.rotate_local_x(time.delta_secs() * 0.25);
+    }
+}
+
+fn setup_scene(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     let bowl_mesh = meshes.add(Cylinder::new(8.0, 0.4));
     let bowl_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.15, 0.18, 0.25),
