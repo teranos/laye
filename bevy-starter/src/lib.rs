@@ -364,43 +364,44 @@ async fn idb_request_promise(
     req: &web_sys::IdbRequest,
 ) -> Result<wasm_bindgen::JsValue, String> {
     use wasm_bindgen::JsCast;
-    let success_req = req.clone();
-    let error_req = req.clone();
-    let promise = js_sys::Promise::new(&mut move |resolve, reject| {
-        let success_req_inner = success_req.clone();
-        let resolve_clone = resolve.clone();
-        let onsuccess = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
-            move |_ev: web_sys::Event| match success_req_inner.result() {
-                Ok(val) => {
-                    let _ = resolve_clone.call1(&wasm_bindgen::JsValue::UNDEFINED, &val);
-                }
-                Err(e) => {
-                    let _ = resolve_clone.call1(&wasm_bindgen::JsValue::UNDEFINED, &e);
-                }
-            },
-        );
-        success_req.set_onsuccess(Some(onsuccess.as_ref().unchecked_ref()));
-        onsuccess.forget();
+    let (tx, rx) = futures::channel::oneshot::channel::<Result<wasm_bindgen::JsValue, String>>();
+    let sender = std::rc::Rc::new(std::cell::RefCell::new(Some(tx)));
 
-        let error_req_inner = error_req.clone();
-        let onerror = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
-            move |_ev: web_sys::Event| {
-                let msg = error_req_inner
-                    .error()
-                    .ok()
-                    .flatten()
-                    .map(|e| e.message())
-                    .unwrap_or_else(|| "unknown IDB error".to_string());
-                let _ = reject.call1(
-                    &wasm_bindgen::JsValue::UNDEFINED,
-                    &wasm_bindgen::JsValue::from_str(&msg),
-                );
-            },
-        );
-        error_req.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-        onerror.forget();
-    });
-    wasm_bindgen_futures::JsFuture::from(promise)
-        .await
-        .map_err(|e| format!("IDB promise: {e:?}"))
+    let success_req = req.clone();
+    let sender_success = sender.clone();
+    let onsuccess = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+        move |_ev: web_sys::Event| {
+            let Some(tx) = sender_success.borrow_mut().take() else {
+                return;
+            };
+            let result = success_req
+                .result()
+                .map_err(|e| format!("IdbRequest.result: {e:?}"));
+            let _ = tx.send(result);
+        },
+    );
+    req.set_onsuccess(Some(onsuccess.as_ref().unchecked_ref()));
+    onsuccess.forget();
+
+    let error_req = req.clone();
+    let sender_error = sender;
+    let onerror = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+        move |_ev: web_sys::Event| {
+            let Some(tx) = sender_error.borrow_mut().take() else {
+                return;
+            };
+            let msg = error_req
+                .error()
+                .ok()
+                .flatten()
+                .map(|e| e.message())
+                .unwrap_or_else(|| "unknown IDB error".to_string());
+            let _ = tx.send(Err(msg));
+        },
+    );
+    req.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    rx.await
+        .map_err(|_| "IDB oneshot canceled".to_string())?
 }
