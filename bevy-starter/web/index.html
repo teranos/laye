@@ -142,12 +142,52 @@
         line.textContent = msg;
         errorsEl.appendChild(line);
       };
+      function describeError(ev) {
+        const parts = [];
+        if (ev.type) parts.push(`type: ${ev.type}`);
+        if (ev.message) parts.push(`message: ${ev.message}`);
+        if (ev.filename) {
+          parts.push(`filename: ${ev.filename}:${ev.lineno}:${ev.colno}`);
+        }
+        const err = ev.error;
+        if (err && typeof err === "object") {
+          if (err.name) parts.push(`error.name: ${err.name}`);
+          if (err.message) parts.push(`error.message: ${err.message}`);
+          if (err.stack) parts.push(`error.stack:\n${err.stack}`);
+        } else if (err !== undefined && err !== null) {
+          parts.push(`error: ${String(err)}`);
+        }
+        if (parts.length === 0) parts.push("(ErrorEvent had no populated fields)");
+        return parts.join("\n");
+      }
+      function describeRejection(ev) {
+        const parts = [];
+        if (ev.type) parts.push(`type: ${ev.type}`);
+        const r = ev.reason;
+        if (r === null || r === undefined) {
+          parts.push(`reason: ${String(r)}`);
+        } else if (typeof r === "object") {
+          if (r.name) parts.push(`reason.name: ${r.name}`);
+          if (r.message) parts.push(`reason.message: ${r.message}`);
+          if (r.stack) parts.push(`reason.stack:\n${r.stack}`);
+          try {
+            const j = JSON.stringify(r);
+            if (j && j !== "{}") parts.push(`reason (JSON): ${j}`);
+          } catch (_) {}
+        } else {
+          parts.push(`reason: ${String(r)}`);
+        }
+        if (parts.length <= 1) parts.push("(rejection had no populated fields)");
+        return parts.join("\n");
+      }
       window.addEventListener("error", (ev) => {
-        const detail = ev.error?.stack ?? ev.error?.message ?? ev.message ?? "(no detail)";
+        const detail = describeError(ev);
+        console.error("window.error →", ev);
         showPanic("window.error", detail);
       });
       window.addEventListener("unhandledrejection", (ev) => {
-        const detail = ev.reason?.stack ?? ev.reason?.message ?? String(ev.reason);
+        const detail = describeRejection(ev);
+        console.error("unhandledrejection →", ev);
         showPanic("unhandledrejection", detail);
       });
 
