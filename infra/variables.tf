@@ -30,7 +30,7 @@ variable "relaye_origin_domain" {
 
 variable "relaye_topics" {
   type    = string
-  default = "rave-positions/v1,rave-chat/v1"
+  default = "rave-positions/v1,rave-chat/v1,laye-identity/v1"
 }
 
 variable "relaye_artifacts_bucket" {
@@ -57,10 +57,15 @@ variable "github_repo" {
 
 variable "bevy_starter_subdomain" {
   type    = string
-  default = "bevy-starter"
+  default = "laye"
 }
 
 variable "bevy_starter_bucket" {
   type    = string
   default = "laye-bevy-starter-static"
+}
+
+variable "laye_broker_bucket" {
+  type    = string
+  default = "laye-me-broker-static"
 }

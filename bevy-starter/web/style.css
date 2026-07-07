@@ -85,6 +85,19 @@ button:hover { background: #3a1818; }
   background: #222;
   border: none;
 }
+#bevy-starter-loading-build {
+  margin-top: 6px;
+  color: #666;
+  font-size: 11px;
+}
+#build-info {
+  margin-top: 0.5em;
+  color: #888;
+  font-size: 11px;
+}
+.muted {
+  color: #888;
+}
 #bevy-starter-loading progress::-webkit-progress-bar { background: #222; }
 #bevy-starter-loading progress::-webkit-progress-value { background: #6f9; }
 #bevy-starter-loading progress::-moz-progress-bar { background: #6f9; }

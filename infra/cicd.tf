@@ -61,6 +61,29 @@ resource "aws_iam_role_policy" "github_deploy" {
         ]
         Resource = aws_cloudfront_distribution.bevy_starter.arn
       },
+      {
+        Sid    = "LayeBrokerStaticWrite"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:GetObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          aws_s3_bucket.laye_broker.arn,
+          "${aws_s3_bucket.laye_broker.arn}/*",
+        ]
+      },
+      {
+        Sid    = "LayeBrokerInvalidate"
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateInvalidation",
+          "cloudfront:GetInvalidation",
+        ]
+        Resource = aws_cloudfront_distribution.relaye.arn
+      },
     ]
   })
 }

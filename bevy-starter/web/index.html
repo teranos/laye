@@ -12,6 +12,7 @@
     </div>
     <div id="overlay">
       <div id="status">booting…</div>
+      <div id="build-info" class="muted">build: unknown</div>
       <button id="panic-btn" disabled>trigger rust panic</button>
       <div id="panic"></div>
       <div id="errors"></div>
@@ -19,6 +20,7 @@
     <div id="bevy-starter-loading">
       <div id="bevy-starter-loading-text">loading bevy-starter</div>
       <progress></progress>
+      <div id="bevy-starter-loading-build" class="muted">build: unknown</div>
     </div>
 
     <script type="module">
@@ -48,68 +50,71 @@
     </script>
 
     <script type="module">
-      const DB = "bevy-starter";
-      const STORE = "identity";
-      const KEY = "self";
-
-      function openDb() {
-        return new Promise((resolve, reject) => {
-          const req = indexedDB.open(DB, 1);
-          req.onupgradeneeded = (ev) => {
-            const db = ev.target.result;
-            if (!db.objectStoreNames.contains(STORE)) {
-              db.createObjectStore(STORE);
-            }
-          };
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error);
-        });
-      }
-
-      window.__bevyStarterLoadIdentity = async () => {
-        const db = await openDb();
-        return await new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE, "readonly");
-          const req = tx.objectStore(STORE).get(KEY);
-          req.onsuccess = () => resolve(req.result ?? null);
-          req.onerror = () => reject(req.error);
-        });
-      };
-
-      window.__bevyStarterSaveIdentity = async (bytes) => {
-        const db = await openDb();
-        await new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE, "readwrite");
-          const req = tx.objectStore(STORE).put(bytes, KEY);
-          req.onsuccess = () => resolve();
-          req.onerror = () => reject(req.error);
-        });
-      };
-
-      window.__bevyStarterStatus = (msg) => {
-        document.getElementById("status").textContent = msg;
-      };
+      (async () => {
+        const buildEl = document.getElementById("build-info");
+        const loadingBuildEl = document.getElementById("bevy-starter-loading-build");
+        try {
+          const r = await fetch("./build-info.json", { cache: "no-cache" });
+          if (r.ok) {
+            const info = await r.json();
+            const label = `${info.short} · ${info.built_at}`;
+            buildEl.textContent = `build: ${label}`;
+            if (loadingBuildEl) loadingBuildEl.textContent = `build: ${label}`;
+          }
+        } catch (_) {}
+      })();
 
       const panicEl = document.getElementById("panic");
       function showPanic(source, detail) {
         panicEl.textContent = `${source}\n\n${detail}`;
         panicEl.classList.add("shown");
       }
-      window.__bevyStarterPanic = (envelope) => showPanic("rust panic hook", envelope);
-
-      const errorsEl = document.getElementById("errors");
-      window.__bevyStarterError = (msg) => {
-        const line = document.createElement("div");
-        line.className = "err-line";
-        line.textContent = msg;
-        errorsEl.appendChild(line);
-      };
+      function describeError(ev) {
+        const parts = [];
+        if (ev.type) parts.push(`type: ${ev.type}`);
+        if (ev.message) parts.push(`message: ${ev.message}`);
+        if (ev.filename) {
+          parts.push(`filename: ${ev.filename}:${ev.lineno}:${ev.colno}`);
+        }
+        const err = ev.error;
+        if (err && typeof err === "object") {
+          if (err.name) parts.push(`error.name: ${err.name}`);
+          if (err.message) parts.push(`error.message: ${err.message}`);
+          if (err.stack) parts.push(`error.stack:\n${err.stack}`);
+        } else if (err !== undefined && err !== null) {
+          parts.push(`error: ${String(err)}`);
+        }
+        if (parts.length === 0) parts.push("(ErrorEvent had no populated fields)");
+        return parts.join("\n");
+      }
+      function describeRejection(ev) {
+        const parts = [];
+        if (ev.type) parts.push(`type: ${ev.type}`);
+        const r = ev.reason;
+        if (r === null || r === undefined) {
+          parts.push(`reason: ${String(r)}`);
+        } else if (typeof r === "object") {
+          if (r.name) parts.push(`reason.name: ${r.name}`);
+          if (r.message) parts.push(`reason.message: ${r.message}`);
+          if (r.stack) parts.push(`reason.stack:\n${r.stack}`);
+          try {
+            const j = JSON.stringify(r);
+            if (j && j !== "{}") parts.push(`reason (JSON): ${j}`);
+          } catch (_) {}
+        } else {
+          parts.push(`reason: ${String(r)}`);
+        }
+        if (parts.length <= 1) parts.push("(rejection had no populated fields)");
+        return parts.join("\n");
+      }
       window.addEventListener("error", (ev) => {
-        const detail = ev.error?.stack ?? ev.error?.message ?? ev.message ?? "(no detail)";
+        const detail = describeError(ev);
+        console.error("window.error →", ev);
         showPanic("window.error", detail);
       });
       window.addEventListener("unhandledrejection", (ev) => {
-        const detail = ev.reason?.stack ?? ev.reason?.message ?? String(ev.reason);
+        const detail = describeRejection(ev);
+        console.error("unhandledrejection →", ev);
         showPanic("unhandledrejection", detail);
       });
 

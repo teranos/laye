@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 laye-me = { path = "../crates/me" }
+bevy-me = { path = "../crates/bevy-me" }
 bevy-input-capture = { path = "../crates/bevy-input-capture" }
 bevy-observability = { path = "../crates/bevy-observability" }
 bevy-drawer = { path = "../crates/bevy-drawer" }
@@ -20,6 +21,7 @@ bevy-chat = { path = "../crates/bevy-chat" }
 bevy-libp2p = { path = "../crates/bevy-libp2p" }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.143"
+futures = "=0.3.32"
 bevy = { version = "=0.19.0", default-features = false, features = [
     "default_app",
     "3d_api",
@@ -36,5 +38,27 @@ bevy = { version = "=0.19.0", default-features = false, features = [
 wasm-bindgen = "=0.2.121"
 wasm-bindgen-futures = "=0.4.71"
 js-sys = "=0.3.98"
+web-sys = { version = "=0.3.98", features = [
+    "console",
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Node",
+    "DomTokenList",
+    "Event",
+    "IdbFactory",
+    "IdbOpenDbRequest",
+    "IdbDatabase",
+    "IdbTransaction",
+    "IdbObjectStore",
+    "IdbRequest",
+    "IdbTransactionMode",
+    "IdbVersionChangeEvent",
+    "DomException",
+    "DomStringList",
+    "EventTarget",
+    "MessageEvent",
+] }
 getrandom = { version = "=0.3.4", features = ["wasm_js"] }
 getrandom_v02 = { package = "getrandom", version = "=0.2.17", features = ["js"] }

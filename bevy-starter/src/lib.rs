@@ -1,25 +1,146 @@
 mod scene;
 
 #[cfg(target_arch = "wasm32")]
+pub use login::{LoginOutcome, open_login_popup, take_login_outcome};
+
+#[cfg(target_arch = "wasm32")]
+mod login {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::closure::Closure;
+
+    #[derive(Debug)]
+    pub enum LoginOutcome {
+        Signed(SignedBindingWire),
+        Error(String),
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    struct MessageWire {
+        #[serde(rename = "type")]
+        type_: String,
+        signed: Option<SignedBindingWire>,
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    pub struct SignedBindingWire {
+        pub claim: ClaimWire,
+        pub signature_hex: String,
+        pub signer_pubkey_hex: String,
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    pub struct ClaimWire {
+        pub peer_pubkey_hex: String,
+        pub provider: String,
+        pub canonical_id: String,
+        pub handle: Option<String>,
+        pub issued_at: u64,
+    }
+
+    thread_local! {
+        static PENDING: std::cell::RefCell<Option<LoginOutcome>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    const BROKER_ORIGIN: &str = "https://relaye.sbvh.nl";
+    const POPUP_TARGET: &str = "laye-login";
+    const POPUP_FEATURES: &str = "width=520,height=720";
+
+    pub fn open_login_popup(peer_pubkey_hex: &str) -> Result<(), String> {
+        let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+        let url = format!("{BROKER_ORIGIN}/me/?peer={peer_pubkey_hex}");
+        let popup = window
+            .open_with_url_and_target_and_features(&url, POPUP_TARGET, POPUP_FEATURES)
+            .map_err(|e| format!("window.open: {e:?}"))?;
+        if popup.is_none() {
+            return Err("popup blocked by browser".to_string());
+        }
+
+        let listener = Closure::<dyn FnMut(web_sys::MessageEvent)>::new(
+            move |ev: web_sys::MessageEvent| {
+                if ev.origin() != BROKER_ORIGIN {
+                    return;
+                }
+                let Ok(json) = js_sys::JSON::stringify(&ev.data()) else {
+                    return;
+                };
+                let Some(json_str) = json.as_string() else {
+                    return;
+                };
+                let Ok(msg) = serde_json::from_str::<MessageWire>(&json_str) else {
+                    return;
+                };
+                if msg.type_ != "laye/identity/link" {
+                    return;
+                }
+                let outcome = match msg.signed {
+                    Some(signed) => LoginOutcome::Signed(signed),
+                    None => LoginOutcome::Error(
+                        "broker did not return a signed binding".to_string(),
+                    ),
+                };
+                PENDING.with(|p| *p.borrow_mut() = Some(outcome));
+            },
+        );
+        window
+            .add_event_listener_with_callback("message", listener.as_ref().unchecked_ref())
+            .map_err(|e| format!("addEventListener: {e:?}"))?;
+        listener.forget();
+        Ok(())
+    }
+
+    pub fn take_login_outcome() -> Option<LoginOutcome> {
+        PENDING.with(|p| p.borrow_mut().take())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-unsafe extern "C" {
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterLoadIdentity")]
-    fn js_load_identity() -> js_sys::Promise;
+const IDB_NAME: &str = "bevy-starter";
+#[cfg(target_arch = "wasm32")]
+const IDB_STORE: &str = "identity";
+#[cfg(target_arch = "wasm32")]
+const IDB_KEY: &str = "self";
 
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterSaveIdentity")]
-    fn js_save_identity(bytes: js_sys::Uint8Array) -> js_sys::Promise;
+#[cfg(target_arch = "wasm32")]
+fn document() -> Option<web_sys::Document> {
+    web_sys::window().and_then(|w| w.document())
+}
 
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterStatus")]
-    fn js_status(msg: &str);
+#[cfg(target_arch = "wasm32")]
+fn set_status(msg: &str) {
+    if let Some(el) = document().and_then(|d| d.get_element_by_id("status")) {
+        el.set_text_content(Some(msg));
+    }
+}
 
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterPanic")]
-    fn js_panic(envelope: &str);
+#[cfg(target_arch = "wasm32")]
+fn emit_error(msg: &str) {
+    web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(msg));
+    let Some(doc) = document() else { return };
+    let Some(container) = doc.get_element_by_id("errors") else {
+        return;
+    };
+    let Ok(line) = doc.create_element("div") else {
+        return;
+    };
+    line.set_class_name("err-line");
+    line.set_text_content(Some(msg));
+    let _ = container.append_child(&line);
+}
 
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterError")]
-    fn js_error(msg: &str);
+#[cfg(target_arch = "wasm32")]
+fn show_panic(source: &str, detail: &str) {
+    let msg = format!("{source}\n\n{detail}");
+    web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(&msg));
+    let Some(doc) = document() else { return };
+    let Some(el) = doc.get_element_by_id("panic") else {
+        return;
+    };
+    el.set_text_content(Some(&msg));
+    let _ = el.class_list().add_1("shown");
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -61,7 +182,7 @@ pub fn install_wasm_error_layer(
             let mut v = MessageVisitor::default();
             event.record(&mut v);
             let tag = if level == Level::ERROR { "ERROR" } else { "WARN" };
-            js_error(&format!("[{tag}] {target}: {}", v.message));
+            emit_error(&format!("[{tag}] {target}: {}", v.message));
         }
     }
 
@@ -82,7 +203,10 @@ fn install_panic_hook() {
             .map(|s| s.to_string())
             .or_else(|| payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "<non-string panic payload>".to_string());
-        js_panic(&format!("rust panic at {location}: {msg}"));
+        show_panic(
+            "rust panic hook",
+            &format!("rust panic at {location}: {msg}"),
+        );
     }));
 }
 
@@ -99,37 +223,46 @@ pub fn run() {
 
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
-        let (status, identity_bytes) = match load_or_mint_identity().await {
+        let (status, identity_bytes, peer_pubkey_hex) = match load_or_mint_identity().await {
             Ok(bytes) => {
-                let s = match laye_me::load(&bytes) {
+                let (s, hex) = match laye_me::load(&bytes) {
                     Ok(k) => match k.public().try_into_ed25519() {
-                        Ok(ed) => format!(
-                            "identity {} bytes, pubkey {} bytes — starting scene",
-                            bytes.len(),
-                            ed.to_bytes().len()
-                        ),
-                        Err(e) => format!("non-Ed25519 public: {e}"),
+                        Ok(ed) => {
+                            let pk_bytes = ed.to_bytes();
+                            let hex: String = pk_bytes
+                                .iter()
+                                .map(|b| format!("{b:02x}"))
+                                .collect();
+                            (
+                                format!(
+                                    "identity {} bytes, pubkey {} bytes — starting scene",
+                                    bytes.len(),
+                                    pk_bytes.len()
+                                ),
+                                Some(hex),
+                            )
+                        }
+                        Err(e) => (format!("non-Ed25519 public: {e}"), None),
                     },
-                    Err(e) => format!("identity load error: {e}"),
+                    Err(e) => (format!("identity load error: {e}"), None),
                 };
-                (s, Some(bytes))
+                (s, Some(bytes), hex)
             }
-            Err(e) => (format!("identity error: {e}"), None),
+            Err(e) => (format!("identity error: {e}"), None, None),
         };
-        js_status(&status);
-        scene::build_and_run_app(identity_bytes);
+        set_status(&status);
+        scene::build_and_run_app(identity_bytes, peer_pubkey_hex);
     });
 
     #[cfg(not(target_arch = "wasm32"))]
-    scene::build_and_run_app(None);
+    scene::build_and_run_app(None, None);
 }
 
 #[cfg(target_arch = "wasm32")]
 async fn load_or_mint_identity() -> Result<Vec<u8>, String> {
     use wasm_bindgen::JsCast;
-    let val = wasm_bindgen_futures::JsFuture::from(js_load_identity())
-        .await
-        .map_err(|e| format!("read identity from IndexedDB: {e:?}"))?;
+    let db = idb_open().await?;
+    let val = idb_get(&db, IDB_KEY).await?;
     if !val.is_null()
         && !val.is_undefined()
         && let Ok(arr) = val.dyn_into::<js_sys::Uint8Array>()
@@ -138,16 +271,137 @@ async fn load_or_mint_identity() -> Result<Vec<u8>, String> {
         arr.copy_to(&mut bytes);
         return Ok(bytes);
     }
-    mint_and_save().await
+    mint_and_save(&db).await
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn mint_and_save() -> Result<Vec<u8>, String> {
+async fn mint_and_save(db: &web_sys::IdbDatabase) -> Result<Vec<u8>, String> {
     let fresh = laye_me::fresh();
     let bytes = laye_me::to_bytes(&fresh).map_err(|e| format!("encode fresh identity: {e}"))?;
     let arr = js_sys::Uint8Array::from(bytes.as_slice());
-    wasm_bindgen_futures::JsFuture::from(js_save_identity(arr))
-        .await
-        .map_err(|e| format!("save identity to IndexedDB: {e:?}"))?;
+    idb_put(db, IDB_KEY, &arr.into()).await?;
     Ok(bytes)
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_open() -> Result<web_sys::IdbDatabase, String> {
+    use wasm_bindgen::JsCast;
+    let factory = web_sys::window()
+        .ok_or_else(|| "no window".to_string())?
+        .indexed_db()
+        .map_err(|e| format!("indexed_db(): {e:?}"))?
+        .ok_or_else(|| "indexedDB unavailable".to_string())?;
+    let req = factory
+        .open_with_u32(IDB_NAME, 1)
+        .map_err(|e| format!("open(): {e:?}"))?;
+
+    let upgrade_req = req.clone();
+    let onupgrade = wasm_bindgen::closure::Closure::<
+        dyn FnMut(web_sys::IdbVersionChangeEvent),
+    >::new(move |_ev: web_sys::IdbVersionChangeEvent| {
+        let Ok(val) = upgrade_req.result() else { return };
+        let Ok(db) = val.dyn_into::<web_sys::IdbDatabase>() else {
+            return;
+        };
+        let names = db.object_store_names();
+        let mut has_store = false;
+        for i in 0..names.length() {
+            if names.item(i).as_deref() == Some(IDB_STORE) {
+                has_store = true;
+                break;
+            }
+        }
+        if !has_store {
+            let _ = db.create_object_store(IDB_STORE);
+        }
+    });
+    req.set_onupgradeneeded(Some(onupgrade.as_ref().unchecked_ref()));
+    onupgrade.forget();
+
+    let val = idb_request_promise(req.unchecked_ref::<web_sys::IdbRequest>()).await?;
+    val.dyn_into::<web_sys::IdbDatabase>()
+        .map_err(|_| "IdbOpenDbRequest result was not an IdbDatabase".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_get(
+    db: &web_sys::IdbDatabase,
+    key: &str,
+) -> Result<wasm_bindgen::JsValue, String> {
+    let tx = db
+        .transaction_with_str(IDB_STORE)
+        .map_err(|e| format!("transaction(readonly): {e:?}"))?;
+    let store = tx
+        .object_store(IDB_STORE)
+        .map_err(|e| format!("object_store: {e:?}"))?;
+    let req = store
+        .get(&wasm_bindgen::JsValue::from_str(key))
+        .map_err(|e| format!("get: {e:?}"))?;
+    idb_request_promise(&req).await
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_put(
+    db: &web_sys::IdbDatabase,
+    key: &str,
+    value: &wasm_bindgen::JsValue,
+) -> Result<(), String> {
+    let tx = db
+        .transaction_with_str_and_mode(IDB_STORE, web_sys::IdbTransactionMode::Readwrite)
+        .map_err(|e| format!("transaction(readwrite): {e:?}"))?;
+    let store = tx
+        .object_store(IDB_STORE)
+        .map_err(|e| format!("object_store: {e:?}"))?;
+    let req = store
+        .put_with_key(value, &wasm_bindgen::JsValue::from_str(key))
+        .map_err(|e| format!("put_with_key: {e:?}"))?;
+    idb_request_promise(&req).await?;
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_request_promise(
+    req: &web_sys::IdbRequest,
+) -> Result<wasm_bindgen::JsValue, String> {
+    use wasm_bindgen::JsCast;
+    let (tx, rx) = futures::channel::oneshot::channel::<Result<wasm_bindgen::JsValue, String>>();
+    let sender = std::rc::Rc::new(std::cell::RefCell::new(Some(tx)));
+
+    let success_req = req.clone();
+    let sender_success = sender.clone();
+    let onsuccess = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+        move |_ev: web_sys::Event| {
+            let Some(tx) = sender_success.borrow_mut().take() else {
+                return;
+            };
+            let result = success_req
+                .result()
+                .map_err(|e| format!("IdbRequest.result: {e:?}"));
+            let _ = tx.send(result);
+        },
+    );
+    req.set_onsuccess(Some(onsuccess.as_ref().unchecked_ref()));
+    onsuccess.forget();
+
+    let error_req = req.clone();
+    let sender_error = sender;
+    let onerror = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+        move |_ev: web_sys::Event| {
+            let Some(tx) = sender_error.borrow_mut().take() else {
+                return;
+            };
+            let msg = error_req
+                .error()
+                .ok()
+                .flatten()
+                .map(|e| e.message())
+                .unwrap_or_else(|| "unknown IDB error".to_string());
+            let _ = tx.send(Err(msg));
+        },
+    );
+    req.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    rx.await
+        .map_err(|_| "IDB oneshot canceled".to_string())?
 }

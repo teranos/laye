@@ -76,11 +76,11 @@ jobs:
           if [ "$REF" = "main" ]; then
             echo "prefix=" >> "$GITHUB_OUTPUT"
             echo "invalidation_path=/*" >> "$GITHUB_OUTPUT"
-            echo "url=https://bevy-starter.sbvh.nl/" >> "$GITHUB_OUTPUT"
+            echo "url=https://laye.sbvh.nl/" >> "$GITHUB_OUTPUT"
           else
             echo "prefix=${REF}/" >> "$GITHUB_OUTPUT"
             echo "invalidation_path=/${REF}/*" >> "$GITHUB_OUTPUT"
-            echo "url=https://bevy-starter.sbvh.nl/${REF}/" >> "$GITHUB_OUTPUT"
+            echo "url=https://laye.sbvh.nl/${REF}/" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Sync dist to S3
