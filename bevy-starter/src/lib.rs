@@ -11,15 +11,45 @@ unsafe extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterSaveIdentity")]
     fn js_save_identity(bytes: js_sys::Uint8Array) -> js_sys::Promise;
+}
 
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterStatus")]
-    fn js_status(msg: &str);
+#[cfg(target_arch = "wasm32")]
+fn document() -> Option<web_sys::Document> {
+    web_sys::window().and_then(|w| w.document())
+}
 
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterPanic")]
-    fn js_panic(envelope: &str);
+#[cfg(target_arch = "wasm32")]
+fn set_status(msg: &str) {
+    if let Some(el) = document().and_then(|d| d.get_element_by_id("status")) {
+        el.set_text_content(Some(msg));
+    }
+}
 
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterError")]
-    fn js_error(msg: &str);
+#[cfg(target_arch = "wasm32")]
+fn emit_error(msg: &str) {
+    web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(msg));
+    let Some(doc) = document() else { return };
+    let Some(container) = doc.get_element_by_id("errors") else {
+        return;
+    };
+    let Ok(line) = doc.create_element("div") else {
+        return;
+    };
+    line.set_class_name("err-line");
+    line.set_text_content(Some(msg));
+    let _ = container.append_child(&line);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn show_panic(source: &str, detail: &str) {
+    let msg = format!("{source}\n\n{detail}");
+    web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(&msg));
+    let Some(doc) = document() else { return };
+    let Some(el) = doc.get_element_by_id("panic") else {
+        return;
+    };
+    el.set_text_content(Some(&msg));
+    let _ = el.class_list().add_1("shown");
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -61,7 +91,7 @@ pub fn install_wasm_error_layer(
             let mut v = MessageVisitor::default();
             event.record(&mut v);
             let tag = if level == Level::ERROR { "ERROR" } else { "WARN" };
-            js_error(&format!("[{tag}] {target}: {}", v.message));
+            emit_error(&format!("[{tag}] {target}: {}", v.message));
         }
     }
 
@@ -82,7 +112,10 @@ fn install_panic_hook() {
             .map(|s| s.to_string())
             .or_else(|| payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "<non-string panic payload>".to_string());
-        js_panic(&format!("rust panic at {location}: {msg}"));
+        show_panic(
+            "rust panic hook",
+            &format!("rust panic at {location}: {msg}"),
+        );
     }));
 }
 
@@ -116,7 +149,7 @@ pub fn run() {
             }
             Err(e) => (format!("identity error: {e}"), None),
         };
-        js_status(&status);
+        set_status(&status);
         scene::build_and_run_app(identity_bytes);
     });
 

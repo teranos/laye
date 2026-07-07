@@ -88,10 +88,6 @@
         });
       };
 
-      window.__bevyStarterStatus = (msg) => {
-        document.getElementById("status").textContent = msg;
-      };
-
       (async () => {
         const buildEl = document.getElementById("build-info");
         const loadingBuildEl = document.getElementById("bevy-starter-loading-build");
@@ -111,15 +107,6 @@
         panicEl.textContent = `${source}\n\n${detail}`;
         panicEl.classList.add("shown");
       }
-      window.__bevyStarterPanic = (envelope) => showPanic("rust panic hook", envelope);
-
-      const errorsEl = document.getElementById("errors");
-      window.__bevyStarterError = (msg) => {
-        const line = document.createElement("div");
-        line.className = "err-line";
-        line.textContent = msg;
-        errorsEl.appendChild(line);
-      };
       function describeError(ev) {
         const parts = [];
         if (ev.type) parts.push(`type: ${ev.type}`);
