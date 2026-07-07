@@ -233,7 +233,7 @@ fn on_login_pressed(
                 **t = String::new();
             }
             #[cfg(target_arch = "wasm32")]
-            crate::js_start_login_mastodon(peer_hex);
+            crate::start_login_mastodon(peer_hex);
             #[cfg(not(target_arch = "wasm32"))]
             {
                 let _ = peer_hex;
@@ -310,14 +310,14 @@ fn poll_login_result(
     mut next: ResMut<NextState<AppState>>,
     mut errors: Query<&mut Text, With<LoginError>>,
 ) {
-    let err_val = crate::js_take_login_error();
+    let err_val = crate::take_login_error();
     if let Some(msg) = err_val.as_string() {
         for mut t in &mut errors {
             **t = msg.clone();
         }
     }
 
-    let result_val = crate::js_take_login_result();
+    let result_val = crate::take_login_result();
     let Some(json_str) = result_val.as_string() else {
         return;
     };

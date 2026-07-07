@@ -22,13 +22,28 @@ unsafe extern "C" {
     fn js_error(msg: &str);
 
     #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterStartLoginMastodon")]
-    pub fn js_start_login_mastodon(peer_pubkey_hex: &str);
+    fn js_start_login_mastodon(peer_pubkey_hex: &str);
 
     #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterTakeLoginResult")]
-    pub fn js_take_login_result() -> wasm_bindgen::JsValue;
+    fn js_take_login_result() -> wasm_bindgen::JsValue;
 
     #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterTakeLoginError")]
-    pub fn js_take_login_error() -> wasm_bindgen::JsValue;
+    fn js_take_login_error() -> wasm_bindgen::JsValue;
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn start_login_mastodon(peer_pubkey_hex: &str) {
+    js_start_login_mastodon(peer_pubkey_hex);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn take_login_result() -> wasm_bindgen::JsValue {
+    js_take_login_result()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn take_login_error() -> wasm_bindgen::JsValue {
+    js_take_login_error()
 }
 
 #[cfg(target_arch = "wasm32")]

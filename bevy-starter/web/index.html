@@ -12,6 +12,7 @@
     </div>
     <div id="overlay">
       <div id="status">booting…</div>
+      <div id="build-info" class="muted">build: unknown</div>
       <button id="panic-btn" disabled>trigger rust panic</button>
       <div id="panic"></div>
       <div id="errors"></div>
@@ -19,6 +20,7 @@
     <div id="bevy-starter-loading">
       <div id="bevy-starter-loading-text">loading bevy-starter</div>
       <progress></progress>
+      <div id="bevy-starter-loading-build" class="muted">build: unknown</div>
     </div>
 
     <script type="module">
@@ -89,6 +91,20 @@
       window.__bevyStarterStatus = (msg) => {
         document.getElementById("status").textContent = msg;
       };
+
+      (async () => {
+        const buildEl = document.getElementById("build-info");
+        const loadingBuildEl = document.getElementById("bevy-starter-loading-build");
+        try {
+          const r = await fetch("./build-info.json", { cache: "no-cache" });
+          if (r.ok) {
+            const info = await r.json();
+            const label = `${info.short} · ${info.built_at}`;
+            buildEl.textContent = `build: ${label}`;
+            if (loadingBuildEl) loadingBuildEl.textContent = `build: ${label}`;
+          }
+        } catch (_) {}
+      })();
 
       let loginPopup = null;
       let loginMessageHandler = null;
