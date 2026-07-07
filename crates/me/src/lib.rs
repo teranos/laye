@@ -11,21 +11,45 @@ pub enum MeError {
 
 #[derive(Default, Debug, Clone)]
 pub struct Identity {
-    pub links: Vec<ExternalLink>,
+    pub links: Vec<SignedBinding>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExternalLink {
+pub struct BindingClaim {
+    pub peer_pubkey: [u8; 32],
     pub provider: String,
     pub canonical_id: String,
     pub handle: Option<String>,
-    pub binding: SignedBinding,
+    pub issued_at: u64,
 }
 
 #[derive(Debug, Clone)]
 pub struct SignedBinding {
-    pub peer_pubkey: [u8; 32],
+    pub claim: BindingClaim,
     pub signature: Vec<u8>,
+    pub signer_pubkey: [u8; 32],
+}
+
+impl BindingClaim {
+    pub fn canonical_bytes(&self) -> Vec<u8> {
+        let peer_hex = hex_lower(&self.peer_pubkey);
+        let handle = self.handle.as_deref().unwrap_or("");
+        format!(
+            "laye-binding/v1|{}|{}|{}|{}|{}",
+            peer_hex, self.provider, self.canonical_id, handle, self.issued_at,
+        )
+        .into_bytes()
+    }
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push(HEX[(b >> 4) as usize] as char);
+        s.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    s
 }
 
 pub fn fresh() -> Keypair {
@@ -94,4 +118,64 @@ mod tests {
         assert_eq!(PeerId::from(kp.public()), PeerId::from(restored.public()));
     }
 
+    #[test]
+    fn canonical_bytes_is_pipe_delimited_v1_format() {
+        let claim = BindingClaim {
+            peer_pubkey: [0xab; 32],
+            provider: "mastodon".to_string(),
+            canonical_id: "https://chaos.social/@onf".to_string(),
+            handle: Some("@onf@chaos.social".to_string()),
+            issued_at: 1_735_000_000,
+        };
+        assert_eq!(
+            claim.canonical_bytes(),
+            b"laye-binding/v1|abababababababababababababababababababababababababababababababab|mastodon|https://chaos.social/@onf|@onf@chaos.social|1735000000",
+        );
+    }
+
+    #[test]
+    fn canonical_bytes_empty_handle_renders_as_empty_string() {
+        let claim = BindingClaim {
+            peer_pubkey: [0u8; 32],
+            provider: "atproto".to_string(),
+            canonical_id: "did:plc:xyz".to_string(),
+            handle: None,
+            issued_at: 0,
+        };
+        let bytes = claim.canonical_bytes();
+        let s = std::str::from_utf8(&bytes).expect("utf8");
+        assert!(s.contains("|atproto|did:plc:xyz||0"));
+    }
+
+    #[test]
+    fn ed25519_sign_then_verify_round_trips_the_claim() {
+        let signer = fresh();
+        let claim = BindingClaim {
+            peer_pubkey: [0x11; 32],
+            provider: "mastodon".to_string(),
+            canonical_id: "https://chaos.social/@onf".to_string(),
+            handle: Some("@onf@chaos.social".to_string()),
+            issued_at: 1_735_000_000,
+        };
+        let canonical = claim.canonical_bytes();
+        let sig = signer.sign(&canonical).expect("sign");
+        assert!(signer.public().verify(&canonical, &sig));
+    }
+
+    #[test]
+    fn tampered_canonical_bytes_fail_verification() {
+        let signer = fresh();
+        let claim = BindingClaim {
+            peer_pubkey: [0x11; 32],
+            provider: "mastodon".to_string(),
+            canonical_id: "https://chaos.social/@onf".to_string(),
+            handle: None,
+            issued_at: 1_735_000_000,
+        };
+        let canonical = claim.canonical_bytes();
+        let sig = signer.sign(&canonical).expect("sign");
+        let mut tampered = canonical.clone();
+        tampered[0] ^= 0xff;
+        assert!(!signer.public().verify(&tampered, &sig));
+    }
 }

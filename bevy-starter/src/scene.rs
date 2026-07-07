@@ -7,7 +7,7 @@ use bevy::window::WindowPlugin;
 use bevy_chat::ChatOverlayPlugin;
 use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
-use bevy_me::{ExternalLink, Identity, IdentityPlugin, IdentityRes, SignedBinding};
+use bevy_me::{BindingClaim, Identity, IdentityPlugin, IdentityRes, SignedBinding};
 use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
 
 #[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -208,14 +208,16 @@ fn on_login_pressed(
     for i in &q {
         if *i == Interaction::Pressed {
             identity.0 = Some(Identity {
-                links: vec![ExternalLink {
-                    provider: "test".to_string(),
-                    canonical_id: "you".to_string(),
-                    handle: Some("you".to_string()),
-                    binding: SignedBinding {
+                links: vec![SignedBinding {
+                    claim: BindingClaim {
                         peer_pubkey: [0u8; 32],
-                        signature: vec![],
+                        provider: "test".to_string(),
+                        canonical_id: "you".to_string(),
+                        handle: Some("you".to_string()),
+                        issued_at: 0,
                     },
+                    signature: vec![],
+                    signer_pubkey: [0u8; 32],
                 }],
             });
             next.set(AppState::InGame);
