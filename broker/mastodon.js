@@ -1,17 +1,24 @@
 const REDIRECT_URI = `${location.origin}/me/`;
 const CLIENT_NAME = "laye identity broker";
 const SCOPES = "read:accounts";
+const SIGN_ENDPOINT = `${location.origin}/me/sign`;
 
 const STORAGE_INSTANCE = "laye_mastodon_instance";
 const STORAGE_CLIENT_ID = "laye_mastodon_client_id";
 const STORAGE_CLIENT_SECRET = "laye_mastodon_client_secret";
+const STORAGE_PEER_PUBKEY = "laye_peer_pubkey_hex";
 
 const params = new URLSearchParams(location.search);
 const code = params.get("code");
-const error = params.get("error");
+const errorParam = params.get("error");
+const peerParam = params.get("peer");
 
-if (error) {
-  showError(`authorization refused: ${error}`);
+if (peerParam && !code) {
+  sessionStorage.setItem(STORAGE_PEER_PUBKEY, peerParam);
+}
+
+if (errorParam) {
+  showError(`authorization refused: ${errorParam}`);
   clearState();
   history.replaceState({}, "", location.pathname);
 } else if (code) {
@@ -78,9 +85,21 @@ async function handleCallback(code, instance, clientId, clientSecret) {
   try {
     const token = await exchangeCode(code, instance, clientId, clientSecret);
     const actor = await fetchActor(token, instance);
+    const peerPubkeyHex = sessionStorage.getItem(STORAGE_PEER_PUBKEY);
+    let signed = null;
+    if (peerPubkeyHex) {
+      signed = await signBinding({
+        peer_pubkey_hex: peerPubkeyHex,
+        provider: "mastodon",
+        canonical_id: actor.url,
+        handle: `@${actor.username}@${instance}`,
+        mastodon_token: token,
+        mastodon_instance: instance,
+      });
+    }
     clearState();
     history.replaceState({}, "", location.pathname);
-    showResult(actor, instance);
+    showResult(actor, instance, signed);
   } catch (err) {
     showError(err.message);
   }
@@ -115,7 +134,21 @@ async function fetchActor(token, instance) {
   return await r.json();
 }
 
-function showResult(actor, instance) {
+async function signBinding(body) {
+  const r = await fetch(SIGN_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const detail = j.error ?? `HTTP ${r.status}`;
+    throw new Error(`sign endpoint: ${detail}`);
+  }
+  return j;
+}
+
+function showResult(actor, instance, signed) {
   document.getElementById("intro").hidden = true;
   document.getElementById("login-mastodon").hidden = true;
   const result = document.getElementById("result");
@@ -133,9 +166,15 @@ function showResult(actor, instance) {
     2,
   );
 
+  if (signed) {
+    const signedEl = document.getElementById("result-signed");
+    signedEl.hidden = false;
+    signedEl.textContent = JSON.stringify(signed, null, 2);
+  }
+
   if (window.opener && window.opener !== window) {
     window.opener.postMessage(
-      { type: "laye/identity/link", link },
+      { type: "laye/identity/link", link, signed },
       "*",
     );
   }
@@ -150,4 +189,5 @@ function clearState() {
   sessionStorage.removeItem(STORAGE_INSTANCE);
   sessionStorage.removeItem(STORAGE_CLIENT_ID);
   sessionStorage.removeItem(STORAGE_CLIENT_SECRET);
+  sessionStorage.removeItem(STORAGE_PEER_PUBKEY);
 }
