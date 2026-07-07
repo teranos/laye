@@ -113,6 +113,20 @@ resource "aws_cloudfront_distribution" "relaye" {
     }
   }
 
+  ordered_cache_behavior {
+    path_pattern           = "/ws/*"
+    target_origin_id       = "lightsail-relaye"
+    viewer_protocol_policy = "https-only"
+
+    allowed_methods = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods  = ["GET", "HEAD"]
+
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+
+    compress = false
+  }
+
   restrictions {
     geo_restriction {
       restriction_type = "none"
