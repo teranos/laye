@@ -10,23 +10,43 @@
     <main>
       <h1>laye</h1>
       <p class="tag">identity broker</p>
-      <section>
+
+      <section id="intro">
         <p>
-          This origin owns identity ceremonies for laye apps.
-          Apps embed this page in a hidden iframe and exchange
-          <code>postMessage</code>s to link Mastodon, Bluesky, or a
-          WebAuthn passkey to the peer key on the wire.
-        </p>
-        <p>
-          WebAuthn RP ID is <code>relaye.sbvh.nl</code> — passkeys
-          registered here are portable across every laye app.
+          This origin owns identity ceremonies for laye apps. Apps
+          embed this page in a popup or hidden iframe and exchange
+          <code>postMessage</code>s to link a Mastodon, Bluesky, or
+          WebAuthn identity to the peer key on the wire.
         </p>
       </section>
+
+      <section id="login-mastodon">
+        <h2>Mastodon</h2>
+        <form id="mastodon-form">
+          <input
+            type="text"
+            id="mastodon-instance"
+            placeholder="mastodon.social"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+          <button type="submit">Log in</button>
+        </form>
+        <div id="mastodon-error" class="error"></div>
+      </section>
+
+      <section id="result" hidden>
+        <h2>Linked</h2>
+        <pre id="result-actor"></pre>
+      </section>
+
       <section class="status">
         <div>build: <span id="build">unknown</span></div>
         <div>origin: <span id="origin"></span></div>
       </section>
     </main>
+    <script type="module" src="./mastodon.js"></script>
     <script type="module">
       const build = document.getElementById("build");
       const origin = document.getElementById("origin");
