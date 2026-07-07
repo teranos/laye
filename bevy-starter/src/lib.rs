@@ -20,30 +20,6 @@ unsafe extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterError")]
     fn js_error(msg: &str);
-
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterStartLoginMastodon")]
-    fn js_start_login_mastodon(peer_pubkey_hex: &str);
-
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterTakeLoginResult")]
-    fn js_take_login_result() -> wasm_bindgen::JsValue;
-
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterTakeLoginError")]
-    fn js_take_login_error() -> wasm_bindgen::JsValue;
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn start_login_mastodon(peer_pubkey_hex: &str) {
-    js_start_login_mastodon(peer_pubkey_hex);
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn take_login_result() -> wasm_bindgen::JsValue {
-    js_take_login_result()
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn take_login_error() -> wasm_bindgen::JsValue {
-    js_take_login_error()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -123,39 +99,29 @@ pub fn run() {
 
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
-        let (status, identity_bytes, peer_pubkey_hex) = match load_or_mint_identity().await {
+        let (status, identity_bytes) = match load_or_mint_identity().await {
             Ok(bytes) => {
-                let (s, hex) = match laye_me::load(&bytes) {
+                let s = match laye_me::load(&bytes) {
                     Ok(k) => match k.public().try_into_ed25519() {
-                        Ok(ed) => {
-                            let pk_bytes = ed.to_bytes();
-                            let hex = pk_bytes
-                                .iter()
-                                .map(|b| format!("{b:02x}"))
-                                .collect::<String>();
-                            (
-                                format!(
-                                    "identity {} bytes, pubkey {} bytes — starting scene",
-                                    bytes.len(),
-                                    pk_bytes.len()
-                                ),
-                                Some(hex),
-                            )
-                        }
-                        Err(e) => (format!("non-Ed25519 public: {e}"), None),
+                        Ok(ed) => format!(
+                            "identity {} bytes, pubkey {} bytes — starting scene",
+                            bytes.len(),
+                            ed.to_bytes().len()
+                        ),
+                        Err(e) => format!("non-Ed25519 public: {e}"),
                     },
-                    Err(e) => (format!("identity load error: {e}"), None),
+                    Err(e) => format!("identity load error: {e}"),
                 };
-                (s, Some(bytes), hex)
+                (s, Some(bytes))
             }
-            Err(e) => (format!("identity error: {e}"), None, None),
+            Err(e) => (format!("identity error: {e}"), None),
         };
         js_status(&status);
-        scene::build_and_run_app(identity_bytes, peer_pubkey_hex);
+        scene::build_and_run_app(identity_bytes);
     });
 
     #[cfg(not(target_arch = "wasm32"))]
-    scene::build_and_run_app(None, None);
+    scene::build_and_run_app(None);
 }
 
 #[cfg(target_arch = "wasm32")]
