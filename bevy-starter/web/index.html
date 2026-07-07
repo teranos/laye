@@ -90,6 +90,44 @@
         document.getElementById("status").textContent = msg;
       };
 
+      let loginPopup = null;
+      let loginMessageHandler = null;
+      window.__bevyStarterLoginResult = null;
+      window.__bevyStarterLoginError = null;
+
+      window.__bevyStarterStartLoginMastodon = (peerPubkeyHex) => {
+        window.__bevyStarterLoginResult = null;
+        window.__bevyStarterLoginError = null;
+        const url = `https://relaye.sbvh.nl/me/?peer=${encodeURIComponent(peerPubkeyHex)}`;
+        loginPopup = window.open(url, "laye-login", "width=520,height=720");
+        if (!loginPopup) {
+          window.__bevyStarterLoginError = "popup blocked by browser";
+          return;
+        }
+        loginMessageHandler = (ev) => {
+          if (ev.origin !== "https://relaye.sbvh.nl") return;
+          if (!ev.data || ev.data.type !== "laye/identity/link") return;
+          window.removeEventListener("message", loginMessageHandler);
+          loginMessageHandler = null;
+          try { loginPopup.close(); } catch (_) {}
+          loginPopup = null;
+          window.__bevyStarterLoginResult = JSON.stringify(ev.data);
+        };
+        window.addEventListener("message", loginMessageHandler);
+      };
+
+      window.__bevyStarterTakeLoginResult = () => {
+        const r = window.__bevyStarterLoginResult;
+        window.__bevyStarterLoginResult = null;
+        return r;
+      };
+
+      window.__bevyStarterTakeLoginError = () => {
+        const e = window.__bevyStarterLoginError;
+        window.__bevyStarterLoginError = null;
+        return e;
+      };
+
       const panicEl = document.getElementById("panic");
       function showPanic(source, detail) {
         panicEl.textContent = `${source}\n\n${detail}`;
