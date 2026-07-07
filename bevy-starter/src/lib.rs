@@ -1,6 +1,100 @@
 mod scene;
 
 #[cfg(target_arch = "wasm32")]
+pub use login::{LoginOutcome, open_login_popup, take_login_outcome};
+
+#[cfg(target_arch = "wasm32")]
+mod login {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::closure::Closure;
+
+    #[derive(Debug)]
+    pub enum LoginOutcome {
+        Signed(SignedBindingWire),
+        Error(String),
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    struct MessageWire {
+        #[serde(rename = "type")]
+        type_: String,
+        signed: Option<SignedBindingWire>,
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    pub struct SignedBindingWire {
+        pub claim: ClaimWire,
+        pub signature_hex: String,
+        pub signer_pubkey_hex: String,
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    pub struct ClaimWire {
+        pub peer_pubkey_hex: String,
+        pub provider: String,
+        pub canonical_id: String,
+        pub handle: Option<String>,
+        pub issued_at: u64,
+    }
+
+    thread_local! {
+        static PENDING: std::cell::RefCell<Option<LoginOutcome>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    const BROKER_ORIGIN: &str = "https://relaye.sbvh.nl";
+    const POPUP_TARGET: &str = "laye-login";
+    const POPUP_FEATURES: &str = "width=520,height=720";
+
+    pub fn open_login_popup(peer_pubkey_hex: &str) -> Result<(), String> {
+        let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+        let url = format!("{BROKER_ORIGIN}/me/?peer={peer_pubkey_hex}");
+        let popup = window
+            .open_with_url_and_target_and_features(&url, POPUP_TARGET, POPUP_FEATURES)
+            .map_err(|e| format!("window.open: {e:?}"))?;
+        if popup.is_none() {
+            return Err("popup blocked by browser".to_string());
+        }
+
+        let listener = Closure::<dyn FnMut(web_sys::MessageEvent)>::new(
+            move |ev: web_sys::MessageEvent| {
+                if ev.origin() != BROKER_ORIGIN {
+                    return;
+                }
+                let Ok(json) = js_sys::JSON::stringify(&ev.data()) else {
+                    return;
+                };
+                let Some(json_str) = json.as_string() else {
+                    return;
+                };
+                let Ok(msg) = serde_json::from_str::<MessageWire>(&json_str) else {
+                    return;
+                };
+                if msg.type_ != "laye/identity/link" {
+                    return;
+                }
+                let outcome = match msg.signed {
+                    Some(signed) => LoginOutcome::Signed(signed),
+                    None => LoginOutcome::Error(
+                        "broker did not return a signed binding".to_string(),
+                    ),
+                };
+                PENDING.with(|p| *p.borrow_mut() = Some(outcome));
+            },
+        );
+        window
+            .add_event_listener_with_callback("message", listener.as_ref().unchecked_ref())
+            .map_err(|e| format!("addEventListener: {e:?}"))?;
+        listener.forget();
+        Ok(())
+    }
+
+    pub fn take_login_outcome() -> Option<LoginOutcome> {
+        PENDING.with(|p| p.borrow_mut().take())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
@@ -129,29 +223,39 @@ pub fn run() {
 
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
-        let (status, identity_bytes) = match load_or_mint_identity().await {
+        let (status, identity_bytes, peer_pubkey_hex) = match load_or_mint_identity().await {
             Ok(bytes) => {
-                let s = match laye_me::load(&bytes) {
+                let (s, hex) = match laye_me::load(&bytes) {
                     Ok(k) => match k.public().try_into_ed25519() {
-                        Ok(ed) => format!(
-                            "identity {} bytes, pubkey {} bytes — starting scene",
-                            bytes.len(),
-                            ed.to_bytes().len()
-                        ),
-                        Err(e) => format!("non-Ed25519 public: {e}"),
+                        Ok(ed) => {
+                            let pk_bytes = ed.to_bytes();
+                            let hex: String = pk_bytes
+                                .iter()
+                                .map(|b| format!("{b:02x}"))
+                                .collect();
+                            (
+                                format!(
+                                    "identity {} bytes, pubkey {} bytes — starting scene",
+                                    bytes.len(),
+                                    pk_bytes.len()
+                                ),
+                                Some(hex),
+                            )
+                        }
+                        Err(e) => (format!("non-Ed25519 public: {e}"), None),
                     },
-                    Err(e) => format!("identity load error: {e}"),
+                    Err(e) => (format!("identity load error: {e}"), None),
                 };
-                (s, Some(bytes))
+                (s, Some(bytes), hex)
             }
-            Err(e) => (format!("identity error: {e}"), None),
+            Err(e) => (format!("identity error: {e}"), None, None),
         };
         set_status(&status);
-        scene::build_and_run_app(identity_bytes);
+        scene::build_and_run_app(identity_bytes, peer_pubkey_hex);
     });
 
     #[cfg(not(target_arch = "wasm32"))]
-    scene::build_and_run_app(None);
+    scene::build_and_run_app(None, None);
 }
 
 #[cfg(target_arch = "wasm32")]

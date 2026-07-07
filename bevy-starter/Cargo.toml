@@ -56,6 +56,8 @@ web-sys = { version = "=0.3.98", features = [
     "IdbVersionChangeEvent",
     "DomException",
     "DomStringList",
+    "EventTarget",
+    "MessageEvent",
 ] }
 getrandom = { version = "=0.3.4", features = ["wasm_js"] }
 getrandom_v02 = { package = "getrandom", version = "=0.2.17", features = ["js"] }

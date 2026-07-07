@@ -26,6 +26,12 @@ struct LoginButton;
 #[derive(Component)]
 struct LoginOrb;
 
+#[derive(Resource)]
+struct PeerPubkeyHex(pub Option<String>);
+
+#[derive(Component)]
+struct LoginError;
+
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
 
 pub const RELAY_MULTIADDR: &str =
@@ -60,7 +66,10 @@ struct RemotePlayers(std::collections::HashMap<String, RemoteEntry>);
 #[derive(Component)]
 struct RemotePlayerCell;
 
-pub fn build_and_run_app(_identity_bytes: Option<Vec<u8>>) {
+pub fn build_and_run_app(
+    _identity_bytes: Option<Vec<u8>>,
+    peer_pubkey_hex: Option<String>,
+) {
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::srgb(0.01, 0.02, 0.05)))
         .add_plugins((
@@ -99,13 +108,14 @@ pub fn build_and_run_app(_identity_bytes: Option<Vec<u8>>) {
             IdentityPlugin,
         ));
 
+    app.insert_resource(PeerPubkeyHex(peer_pubkey_hex));
     app.init_state::<AppState>();
     app.add_systems(Startup, setup_camera);
     app.add_systems(OnEnter(AppState::Login), (spawn_login_screen, spawn_login_orb));
     app.add_systems(OnExit(AppState::Login), (despawn_login_screen, despawn_login_orb));
     app.add_systems(
         Update,
-        (on_login_pressed, spin_login_orb).run_if(in_state(AppState::Login)),
+        (on_login_pressed, spin_login_orb, poll_login_result).run_if(in_state(AppState::Login)),
     );
     app.add_systems(OnEnter(AppState::InGame), setup_scene);
 
@@ -183,7 +193,7 @@ fn spawn_login_screen(mut commands: Commands) {
             ))
             .with_children(|pp| {
                 pp.spawn((
-                    Text::new("Log in"),
+                    Text::new("Log in with Mastodon"),
                     TextFont {
                         font_size: FontSize::Px(14.0),
                         ..default()
@@ -191,6 +201,15 @@ fn spawn_login_screen(mut commands: Commands) {
                     TextColor(Color::srgb(0.9, 0.9, 0.9)),
                 ));
             });
+            p.spawn((
+                LoginError,
+                Text::new(""),
+                TextFont {
+                    font_size: FontSize::Px(12.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.95, 0.5, 0.5)),
+            ));
         });
 }
 
@@ -202,28 +221,122 @@ fn despawn_login_screen(mut commands: Commands, screens: Query<Entity, With<Logi
 
 fn on_login_pressed(
     q: Query<&Interaction, (Changed<Interaction>, With<LoginButton>)>,
-    mut next: ResMut<NextState<AppState>>,
-    mut identity: ResMut<IdentityRes>,
+    peer: Res<PeerPubkeyHex>,
+    mut errors: Query<&mut Text, With<LoginError>>,
 ) {
     for i in &q {
         if *i == Interaction::Pressed {
-            identity.0 = Some(Identity {
-                links: vec![SignedBinding {
-                    claim: BindingClaim {
-                        peer_pubkey: [0u8; 32],
-                        provider: "test".to_string(),
-                        canonical_id: "you".to_string(),
-                        handle: Some("you".to_string()),
-                        issued_at: 0,
-                    },
-                    signature: vec![],
-                    signer_pubkey: [0u8; 32],
-                }],
-            });
-            next.set(AppState::InGame);
+            let Some(peer_hex) = peer.0.as_ref() else {
+                for mut t in &mut errors {
+                    **t = "no peer pubkey — identity not loaded".to_string();
+                }
+                return;
+            };
+            for mut t in &mut errors {
+                **t = String::new();
+            }
+            #[cfg(target_arch = "wasm32")]
+            if let Err(msg) = crate::open_login_popup(peer_hex) {
+                for mut t in &mut errors {
+                    **t = msg.clone();
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let _ = peer_hex;
+            }
         }
     }
 }
+
+#[cfg(target_arch = "wasm32")]
+fn decode_hex_32(s: &str) -> Option<[u8; 32]> {
+    if s.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, chunk) in s.as_bytes().chunks(2).enumerate() {
+        out[i] = (hex_nibble(chunk[0])? << 4) | hex_nibble(chunk[1])?;
+    }
+    Some(out)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decode_hex_variable(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    for chunk in s.as_bytes().chunks(2) {
+        out.push((hex_nibble(chunk[0])? << 4) | hex_nibble(chunk[1])?);
+    }
+    Some(out)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn hex_nibble(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(10 + c - b'a'),
+        b'A'..=b'F' => Some(10 + c - b'A'),
+        _ => None,
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn poll_login_result(
+    mut identity: ResMut<IdentityRes>,
+    mut next: ResMut<NextState<AppState>>,
+    mut errors: Query<&mut Text, With<LoginError>>,
+) {
+    let Some(outcome) = crate::take_login_outcome() else {
+        return;
+    };
+    let signed = match outcome {
+        crate::LoginOutcome::Error(msg) => {
+            for mut t in &mut errors {
+                **t = msg.clone();
+            }
+            return;
+        }
+        crate::LoginOutcome::Signed(s) => s,
+    };
+    let Some(peer_pk) = decode_hex_32(&signed.claim.peer_pubkey_hex) else {
+        for mut t in &mut errors {
+            **t = "peer_pubkey_hex not 32 bytes".to_string();
+        }
+        return;
+    };
+    let Some(signer_pk) = decode_hex_32(&signed.signer_pubkey_hex) else {
+        for mut t in &mut errors {
+            **t = "signer_pubkey_hex not 32 bytes".to_string();
+        }
+        return;
+    };
+    let Some(sig) = decode_hex_variable(&signed.signature_hex) else {
+        for mut t in &mut errors {
+            **t = "signature_hex not valid hex".to_string();
+        }
+        return;
+    };
+    identity.0 = Some(Identity {
+        links: vec![SignedBinding {
+            claim: BindingClaim {
+                peer_pubkey: peer_pk,
+                provider: signed.claim.provider,
+                canonical_id: signed.claim.canonical_id,
+                handle: signed.claim.handle,
+                issued_at: signed.claim.issued_at,
+            },
+            signature: sig,
+            signer_pubkey: signer_pk,
+        }],
+    });
+    next.set(AppState::InGame);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn poll_login_result(_identity: ResMut<IdentityRes>, _next: ResMut<NextState<AppState>>) {}
 
 #[cfg(target_arch = "wasm32")]
 fn publish_self_position(
