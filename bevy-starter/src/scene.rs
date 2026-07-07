@@ -39,6 +39,7 @@ pub const RELAY_MULTIADDR: &str =
 
 pub const CHAT_TOPIC: &str = "rave-chat/v1";
 pub const POSITIONS_TOPIC: &str = "rave-positions/v1";
+pub const IDENTITY_TOPIC: &str = "laye-identity/v1";
 
 #[derive(Component)]
 struct Player;
@@ -65,6 +66,12 @@ struct RemotePlayers(std::collections::HashMap<String, RemoteEntry>);
 
 #[derive(Component)]
 struct RemotePlayerCell;
+
+#[derive(bevy::ecs::resource::Resource, Default)]
+struct BindingTable(std::collections::HashMap<String, Vec<SignedBinding>>);
+
+#[derive(bevy::ecs::resource::Resource, Default)]
+struct BindingPublishAcc(f32);
 
 pub fn build_and_run_app(
     _identity_bytes: Option<Vec<u8>>,
@@ -127,6 +134,7 @@ pub fn build_and_run_app(
             topics: vec![
                 bevy_libp2p::Topic(CHAT_TOPIC.to_string()),
                 bevy_libp2p::Topic(POSITIONS_TOPIC.to_string()),
+                bevy_libp2p::Topic(IDENTITY_TOPIC.to_string()),
             ],
             identify_protocol: "/laye-starter/1.0.0".to_string(),
         });
@@ -135,12 +143,16 @@ pub fn build_and_run_app(
             max_body_bytes: 512,
         });
         app.insert_resource(RemotePlayers::default());
+        app.insert_resource(BindingTable::default());
+        app.insert_resource(BindingPublishAcc::default());
         app.add_systems(
             Update,
             (
                 publish_self_position,
                 drain_position_events,
                 render_remote_players,
+                publish_self_bindings,
+                drain_identity_events,
             )
                 .chain()
                 .run_if(in_state(AppState::InGame)),
@@ -337,6 +349,113 @@ fn poll_login_result(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn poll_login_result(_identity: ResMut<IdentityRes>, _next: ResMut<NextState<AppState>>) {}
+
+#[cfg(target_arch = "wasm32")]
+fn publish_self_bindings(
+    time: Res<Time>,
+    mut acc: ResMut<BindingPublishAcc>,
+    identity: Res<IdentityRes>,
+    net: Res<bevy_libp2p::LayeNet>,
+    mut log: ResMut<ErrorLog>,
+) {
+    acc.0 += time.delta_secs();
+    if acc.0 < 5.0 {
+        return;
+    }
+    acc.0 = 0.0;
+    let Some(id) = identity.0.as_ref() else {
+        return;
+    };
+    if id.links.is_empty() {
+        return;
+    }
+    for binding in &id.links {
+        let bytes = match serde_json::to_vec(binding) {
+            Ok(b) => b,
+            Err(e) => {
+                log.emit(Severity::Warn, format!("bindings: serialize failed: {e}"));
+                continue;
+            }
+        };
+        if let Err(e) = net.publish(&bevy_libp2p::Topic(IDENTITY_TOPIC.to_string()), &bytes) {
+            log.emit(Severity::Warn, format!("bindings: publish failed: {e}"));
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn drain_identity_events(
+    net: Res<bevy_libp2p::LayeNet>,
+    mut reader: MessageReader<bevy_libp2p::LibP2PMessage>,
+    mut table: ResMut<BindingTable>,
+    mut log: ResMut<ErrorLog>,
+) {
+    let self_peer = net.identity().0.clone();
+    for msg in reader.read() {
+        let bevy_libp2p::NetEvent::Message {
+            topic,
+            bytes,
+            from,
+            ..
+        } = &msg.0
+        else {
+            continue;
+        };
+        if topic.0 != IDENTITY_TOPIC {
+            continue;
+        }
+        if from.0 == self_peer {
+            continue;
+        }
+        let binding: SignedBinding = match serde_json::from_slice(bytes) {
+            Ok(b) => b,
+            Err(e) => {
+                log.emit(
+                    Severity::Warn,
+                    format!("bindings: parse from {}: {}", short_peer(&from.0), e),
+                );
+                continue;
+            }
+        };
+        if let Err(e) = binding.verify() {
+            log.emit(
+                Severity::Warn,
+                format!(
+                    "bindings: verify failed from {}: {:?}",
+                    short_peer(&from.0),
+                    e
+                ),
+            );
+            continue;
+        }
+        let entry = table.0.entry(from.0.clone()).or_default();
+        let already = entry.iter().any(|b| {
+            b.claim.provider == binding.claim.provider
+                && b.claim.canonical_id == binding.claim.canonical_id
+        });
+        if !already {
+            log.emit(
+                Severity::Note,
+                format!(
+                    "bindings: {} = {} @ {}",
+                    short_peer(&from.0),
+                    binding.claim.handle.as_deref().unwrap_or("(no handle)"),
+                    binding.claim.provider,
+                ),
+            );
+            entry.push(binding);
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn short_peer(p: &str) -> String {
+    if p.len() > 10 {
+        format!("{}…{}", &p[..6], &p[p.len() - 4..])
+    } else {
+        p.to_string()
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 fn publish_self_position(
