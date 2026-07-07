@@ -4,14 +4,11 @@ mod scene;
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-unsafe extern "C" {
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterLoadIdentity")]
-    fn js_load_identity() -> js_sys::Promise;
-
-    #[wasm_bindgen(js_namespace = window, js_name = "__bevyStarterSaveIdentity")]
-    fn js_save_identity(bytes: js_sys::Uint8Array) -> js_sys::Promise;
-}
+const IDB_NAME: &str = "bevy-starter";
+#[cfg(target_arch = "wasm32")]
+const IDB_STORE: &str = "identity";
+#[cfg(target_arch = "wasm32")]
+const IDB_KEY: &str = "self";
 
 #[cfg(target_arch = "wasm32")]
 fn document() -> Option<web_sys::Document> {
@@ -160,9 +157,8 @@ pub fn run() {
 #[cfg(target_arch = "wasm32")]
 async fn load_or_mint_identity() -> Result<Vec<u8>, String> {
     use wasm_bindgen::JsCast;
-    let val = wasm_bindgen_futures::JsFuture::from(js_load_identity())
-        .await
-        .map_err(|e| format!("read identity from IndexedDB: {e:?}"))?;
+    let db = idb_open().await?;
+    let val = idb_get(&db, IDB_KEY).await?;
     if !val.is_null()
         && !val.is_undefined()
         && let Ok(arr) = val.dyn_into::<js_sys::Uint8Array>()
@@ -171,16 +167,136 @@ async fn load_or_mint_identity() -> Result<Vec<u8>, String> {
         arr.copy_to(&mut bytes);
         return Ok(bytes);
     }
-    mint_and_save().await
+    mint_and_save(&db).await
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn mint_and_save() -> Result<Vec<u8>, String> {
+async fn mint_and_save(db: &web_sys::IdbDatabase) -> Result<Vec<u8>, String> {
     let fresh = laye_me::fresh();
     let bytes = laye_me::to_bytes(&fresh).map_err(|e| format!("encode fresh identity: {e}"))?;
     let arr = js_sys::Uint8Array::from(bytes.as_slice());
-    wasm_bindgen_futures::JsFuture::from(js_save_identity(arr))
-        .await
-        .map_err(|e| format!("save identity to IndexedDB: {e:?}"))?;
+    idb_put(db, IDB_KEY, &arr.into()).await?;
     Ok(bytes)
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_open() -> Result<web_sys::IdbDatabase, String> {
+    use wasm_bindgen::JsCast;
+    let factory = web_sys::window()
+        .ok_or_else(|| "no window".to_string())?
+        .indexed_db()
+        .map_err(|e| format!("indexed_db(): {e:?}"))?
+        .ok_or_else(|| "indexedDB unavailable".to_string())?;
+    let req = factory
+        .open_with_u32(IDB_NAME, 1)
+        .map_err(|e| format!("open(): {e:?}"))?;
+
+    let upgrade_req = req.clone();
+    let onupgrade = wasm_bindgen::closure::Closure::<
+        dyn FnMut(web_sys::IdbVersionChangeEvent),
+    >::new(move |_ev: web_sys::IdbVersionChangeEvent| {
+        let Ok(val) = upgrade_req.result() else { return };
+        let Ok(db) = val.dyn_into::<web_sys::IdbDatabase>() else {
+            return;
+        };
+        let names = db.object_store_names();
+        let mut has_store = false;
+        for i in 0..names.length() {
+            if names.item(i).as_deref() == Some(IDB_STORE) {
+                has_store = true;
+                break;
+            }
+        }
+        if !has_store {
+            let _ = db.create_object_store(IDB_STORE);
+        }
+    });
+    req.set_onupgradeneeded(Some(onupgrade.as_ref().unchecked_ref()));
+    onupgrade.forget();
+
+    let val = idb_request_promise(req.unchecked_ref::<web_sys::IdbRequest>()).await?;
+    val.dyn_into::<web_sys::IdbDatabase>()
+        .map_err(|_| "IdbOpenDbRequest result was not an IdbDatabase".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_get(
+    db: &web_sys::IdbDatabase,
+    key: &str,
+) -> Result<wasm_bindgen::JsValue, String> {
+    let tx = db
+        .transaction_with_str(IDB_STORE)
+        .map_err(|e| format!("transaction(readonly): {e:?}"))?;
+    let store = tx
+        .object_store(IDB_STORE)
+        .map_err(|e| format!("object_store: {e:?}"))?;
+    let req = store
+        .get(&wasm_bindgen::JsValue::from_str(key))
+        .map_err(|e| format!("get: {e:?}"))?;
+    idb_request_promise(&req).await
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_put(
+    db: &web_sys::IdbDatabase,
+    key: &str,
+    value: &wasm_bindgen::JsValue,
+) -> Result<(), String> {
+    let tx = db
+        .transaction_with_str_and_mode(IDB_STORE, web_sys::IdbTransactionMode::Readwrite)
+        .map_err(|e| format!("transaction(readwrite): {e:?}"))?;
+    let store = tx
+        .object_store(IDB_STORE)
+        .map_err(|e| format!("object_store: {e:?}"))?;
+    let req = store
+        .put_with_key(value, &wasm_bindgen::JsValue::from_str(key))
+        .map_err(|e| format!("put_with_key: {e:?}"))?;
+    idb_request_promise(&req).await?;
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn idb_request_promise(
+    req: &web_sys::IdbRequest,
+) -> Result<wasm_bindgen::JsValue, String> {
+    use wasm_bindgen::JsCast;
+    let success_req = req.clone();
+    let error_req = req.clone();
+    let promise = js_sys::Promise::new(&mut move |resolve, reject| {
+        let success_req_inner = success_req.clone();
+        let resolve_clone = resolve.clone();
+        let onsuccess = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+            move |_ev: web_sys::Event| match success_req_inner.result() {
+                Ok(val) => {
+                    let _ = resolve_clone.call1(&wasm_bindgen::JsValue::UNDEFINED, &val);
+                }
+                Err(e) => {
+                    let _ = resolve_clone.call1(&wasm_bindgen::JsValue::UNDEFINED, &e);
+                }
+            },
+        );
+        success_req.set_onsuccess(Some(onsuccess.as_ref().unchecked_ref()));
+        onsuccess.forget();
+
+        let error_req_inner = error_req.clone();
+        let onerror = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+            move |_ev: web_sys::Event| {
+                let msg = error_req_inner
+                    .error()
+                    .ok()
+                    .flatten()
+                    .map(|e| e.message())
+                    .unwrap_or_else(|| "unknown IDB error".to_string());
+                let _ = reject.call1(
+                    &wasm_bindgen::JsValue::UNDEFINED,
+                    &wasm_bindgen::JsValue::from_str(&msg),
+                );
+            },
+        );
+        error_req.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+        onerror.forget();
+    });
+    wasm_bindgen_futures::JsFuture::from(promise)
+        .await
+        .map_err(|e| format!("IDB promise: {e:?}"))
 }
