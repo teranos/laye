@@ -7,7 +7,11 @@ on:
       - 'crates/relaye/**'
       - 'crates/me/**'
       - 'crates/protocol/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/deploy-relaye.yml'
+      - '!**/*.md'
+      - '!**/docs/**'
   workflow_dispatch:
 
 permissions:

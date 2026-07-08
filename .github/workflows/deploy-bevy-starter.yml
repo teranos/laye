@@ -6,7 +6,11 @@ on:
     paths:
       - 'bevy-starter/**'
       - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/deploy-bevy-starter.yml'
+      - '!**/*.md'
+      - '!**/docs/**'
   workflow_dispatch:
 
 permissions:

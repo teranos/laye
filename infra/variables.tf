@@ -30,7 +30,7 @@ variable "relaye_origin_domain" {
 
 variable "relaye_topics" {
   type    = string
-  default = "rave-positions/v1,rave-chat/v1,laye-identity/v1"
+  default = "rave-positions/v1,rave-chat/v1,laye-chat/v1,laye-identity/v1"
 }
 
 variable "relaye_artifacts_bucket" {

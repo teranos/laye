@@ -7,7 +7,7 @@ use bevy::window::WindowPlugin;
 use bevy_chat::ChatOverlayPlugin;
 use bevy_drawer::{DrawerOverlayPlugin, DrawerPlugin};
 use bevy_input_capture::{DefaultBindingsPlugin, InputCapture, InputCapturePlugin};
-use bevy_me::{BindingClaim, Identity, IdentityPlugin, IdentityRes, SignedBinding};
+use bevy_me::{BindingClaim, BindingTable, Identity, IdentityPlugin, IdentityRes, SignedBinding};
 use bevy_observability::{ErrorLog, ObservabilityPlugin, Severity};
 
 #[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -37,7 +37,8 @@ const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 12.0, 16.0);
 pub const RELAY_MULTIADDR: &str =
     "/dns4/relaye.sbvh.nl/tcp/443/wss/p2p/12D3KooWC6UBnnmhhv3BAfYKyW1bFBD4GtC5waiEgQWJCb7Hbqaf";
 
-pub const CHAT_TOPIC: &str = "rave-chat/v1";
+pub const CHAT_TOPIC: &str = "laye-chat/v1";
+pub const LEGACY_CHAT_TOPIC: &str = "rave-chat/v1";
 pub const POSITIONS_TOPIC: &str = "rave-positions/v1";
 pub const IDENTITY_TOPIC: &str = "laye-identity/v1";
 
@@ -66,9 +67,6 @@ struct RemotePlayers(std::collections::HashMap<String, RemoteEntry>);
 
 #[derive(Component)]
 struct RemotePlayerCell;
-
-#[derive(bevy::ecs::resource::Resource, Default)]
-struct BindingTable(std::collections::HashMap<String, Vec<SignedBinding>>);
 
 #[derive(bevy::ecs::resource::Resource, Default)]
 struct BindingPublishAcc(f32);
@@ -133,6 +131,7 @@ pub fn build_and_run_app(
             identity_bytes: _identity_bytes,
             topics: vec![
                 bevy_libp2p::Topic(CHAT_TOPIC.to_string()),
+                bevy_libp2p::Topic(LEGACY_CHAT_TOPIC.to_string()),
                 bevy_libp2p::Topic(POSITIONS_TOPIC.to_string()),
                 bevy_libp2p::Topic(IDENTITY_TOPIC.to_string()),
             ],
@@ -140,10 +139,10 @@ pub fn build_and_run_app(
         });
         app.add_plugins(bevy_chat::ChatPlugin {
             topic: CHAT_TOPIC.to_string(),
+            legacy_topic: Some(LEGACY_CHAT_TOPIC.to_string()),
             max_body_bytes: 512,
         });
         app.insert_resource(RemotePlayers::default());
-        app.insert_resource(BindingTable::default());
         app.insert_resource(BindingPublishAcc::default());
         app.add_systems(
             Update,
@@ -428,7 +427,8 @@ fn drain_identity_events(
             );
             continue;
         }
-        let entry = table.0.entry(from.0.clone()).or_default();
+        let author_pubkey = binding.claim.peer_pubkey;
+        let entry = table.0.entry(author_pubkey).or_default();
         let already = entry.iter().any(|b| {
             b.claim.provider == binding.claim.provider
                 && b.claim.canonical_id == binding.claim.canonical_id

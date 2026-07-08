@@ -9,6 +9,8 @@ license = "MIT"
 workspace = true
 
 [dependencies]
+laye-me = { path = "../me" }
+bevy-me = { path = "../bevy-me" }
 bevy-libp2p = { path = "../bevy-libp2p" }
 bevy-input-capture = { path = "../bevy-input-capture" }
 bevy_app = { version = "=0.19.0", default-features = false }
