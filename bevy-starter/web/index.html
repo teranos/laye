@@ -14,8 +14,6 @@
       <div id="status">booting…</div>
       <div id="build-info" class="muted">build: unknown</div>
       <button id="panic-btn" disabled>trigger rust panic</button>
-      <div id="panic"></div>
-      <div id="errors"></div>
     </div>
     <div id="bevy-starter-loading">
       <div id="bevy-starter-loading-text">loading bevy-starter</div>
@@ -160,6 +158,18 @@
         }
         return bytes;
       }
+
+      // Load laye-p2p (identity, chat, DOM overlay, libp2p) FIRST so it
+      // installs window.laye before bevy_starter.wasm tries to reach it.
+      const laye = await import("./laye_p2p.js");
+      await laye.default();
+      const RELAY_ADDR = "/dns4/relaye.sbvh.nl/tcp/443/wss/p2p/12D3KooWC6UBnnmhhv3BAfYKyW1bFBD4GtC5waiEgQWJCb7Hbqaf";
+      await laye.init(JSON.stringify({
+        bootstrap_addrs: [RELAY_ADDR],
+        topics: [],
+        identify_protocol: "/laye-starter/1.0.0",
+      }));
+      window.laye = laye;
 
       const wasm = await import("./bevy_starter.js");
       const wasmBytes = await streamWasmBytes("./bevy_starter_bg.wasm");

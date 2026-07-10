@@ -1,5 +1,5 @@
 {
-  description = "bevy-starter — laye + Bevy + libp2p starter; cold-start with `nix run`.";
+  description = "laye-p2p — browser social plugin (identity + libp2p + DOM). `nix run` builds + serves scratch page.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -19,23 +19,20 @@
           targets = [ "wasm32-unknown-unknown" ];
         };
         serve = pkgs.writeShellApplication {
-          name = "bevy-starter-serve";
+          name = "laye-p2p-serve";
           runtimeInputs = [ rust pkgs.wasm-bindgen-cli pkgs.python3 pkgs.git ];
           text = ''
             set -eu
             root="$(git rev-parse --show-toplevel)"
             cd "$root"
-            cargo build --target wasm32-unknown-unknown --release --lib --package bevy-starter
             cargo build --target wasm32-unknown-unknown --release --lib --package laye-p2p
-            wasm-bindgen target/wasm32-unknown-unknown/release/bevy_starter.wasm \
-              --target web --out-dir bevy-starter/dist --no-typescript
             wasm-bindgen target/wasm32-unknown-unknown/release/laye_p2p.wasm \
-              --target web --out-dir bevy-starter/dist --no-typescript
-            cp bevy-starter/web/index.html bevy-starter/web/style.css bevy-starter/dist/
+              --target web --out-dir crates/laye-p2p/dist --no-typescript
+            cp crates/laye-p2p/web/index.html crates/laye-p2p/dist/
             echo
-            echo "bevy-starter (with laye-p2p sibling) — http://localhost:8000/"
+            echo "laye-p2p scratch page — http://localhost:8001/"
             echo
-            python3 -m http.server 8000 --directory bevy-starter/dist
+            python3 -m http.server 8001 --directory crates/laye-p2p/dist
           '';
         };
       in {
@@ -44,7 +41,7 @@
         };
         apps.default = {
           type = "app";
-          program = "${serve}/bin/bevy-starter-serve";
+          program = "${serve}/bin/laye-p2p-serve";
         };
       });
 }

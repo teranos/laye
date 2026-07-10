@@ -7,6 +7,11 @@ const STORAGE_INSTANCE = "laye_mastodon_instance";
 const STORAGE_CLIENT_ID = "laye_mastodon_client_id";
 const STORAGE_CLIENT_SECRET = "laye_mastodon_client_secret";
 const STORAGE_PEER_PUBKEY = "laye_peer_pubkey_hex";
+// Persistent history of prior instances — survives across sessions so
+// returning users see their instance pre-filled + autocompleted in the
+// datalist. Cap keeps localStorage sane.
+const HISTORY_KEY = "laye_mastodon_instance_history";
+const HISTORY_CAP = 8;
 
 const params = new URLSearchParams(location.search);
 const code = params.get("code");
@@ -35,10 +40,16 @@ if (errorParam) {
 }
 
 function setupForm() {
+  const input = document.getElementById("mastodon-instance");
+  const history = loadHistory();
+  if (history.length > 0) {
+    input.value = history[0];
+    populateHistoryDatalist(history);
+  }
+
   const form = document.getElementById("mastodon-form");
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const input = document.getElementById("mastodon-instance");
     const inst = normalizeInstance(input.value);
     if (!inst) return;
     try {
@@ -46,6 +57,7 @@ function setupForm() {
       sessionStorage.setItem(STORAGE_INSTANCE, inst);
       sessionStorage.setItem(STORAGE_CLIENT_ID, app.client_id);
       sessionStorage.setItem(STORAGE_CLIENT_SECRET, app.client_secret);
+      remember(inst);
       const authUrl = new URL(`https://${inst}/oauth/authorize`);
       authUrl.searchParams.set("client_id", app.client_id);
       authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
@@ -56,6 +68,40 @@ function setupForm() {
       showError(err.message);
     }
   });
+}
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s) => typeof s === "string" && s.length > 0);
+  } catch (_) {
+    return [];
+  }
+}
+
+function remember(instance) {
+  try {
+    const prior = loadHistory().filter((s) => s !== instance);
+    const next = [instance, ...prior].slice(0, HISTORY_CAP);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  } catch (_) {
+    // localStorage may be blocked (private mode / quota); silent because
+    // pre-fill is a convenience, not a correctness invariant.
+  }
+}
+
+function populateHistoryDatalist(history) {
+  const list = document.getElementById("mastodon-history");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const inst of history) {
+    const opt = document.createElement("option");
+    opt.value = inst;
+    list.appendChild(opt);
+  }
 }
 
 function normalizeInstance(raw) {

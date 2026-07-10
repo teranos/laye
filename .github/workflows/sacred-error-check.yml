@@ -1,0 +1,103 @@
+# Sacred-error axiom CI gate for laye.
+#
+# Mirrors tsot-roam's `.github/workflows/sacred-error-check.yml`. Fails
+# the build on any new silent-drop pattern that violates the axiom in
+# ERROR.md (which lives in tsot-roam; laye adopts the same axiom via
+# `crates/laye-error`). Allowlists carry an exact count of legitimate
+# sites at the time of writing; if a PR adds a new match, the count
+# goes up and the job fails — author must either route through the typed
+# Error pipeline (`crates/laye-p2p/src/error.rs::emit`) or extend the
+# baseline with a `// silent because ...` justification.
+#
+# Patterns checked:
+#   - `let _ = ...` on a Rust Result that carries meaningful failure
+#   - `catch (...) {}` style silent JS catches in .js/.html
+#   - `JsValue::from_str` outside the wasm-bindgen adapter (stringly-
+#     typed cross-seam error, banned by the axiom)
+
+name: sacred-error-check
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'bevy-starter/**'
+      - 'broker/**'
+      - '.github/workflows/sacred-error-check.yml'
+      - '.github/sacred-error-baseline/**'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'bevy-starter/**'
+      - 'broker/**'
+
+permissions:
+  contents: read
+
+jobs:
+  axiom-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Count + compare silent-drop patterns
+        run: |
+          mkdir -p .github/sacred-error-baseline
+
+          # Patterns to track. Each is (label, glob, ripgrep-pattern).
+          # Adding a pattern requires committing a baseline file with
+          # the current count so the gate passes on the next PR.
+          patterns=(
+            "rust-let-underscore|crates|^[[:space:]]*let _ ="
+            "rust-let-underscore-starter|bevy-starter/src|^[[:space:]]*let _ ="
+            "js-empty-catch-paren-crates|crates|catch[[:space:]]*\\([^)]*\\)[[:space:]]*\\{[[:space:]]*\\}"
+            "js-empty-catch-paren-starter|bevy-starter|catch[[:space:]]*\\([^)]*\\)[[:space:]]*\\{[[:space:]]*\\}"
+            "js-empty-catch-paren-broker|broker|catch[[:space:]]*\\([^)]*\\)[[:space:]]*\\{[[:space:]]*\\}"
+            "rust-jsvalue-from-str|crates|JsValue::from_str"
+          )
+
+          fail=0
+          for entry in "${patterns[@]}"; do
+            IFS="|" read -r label root pattern <<< "$entry"
+            baseline_file=".github/sacred-error-baseline/${label}.count"
+            count=$(grep -rE "$pattern" "$root" --exclude-dir=dist --exclude-dir=target 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+            baseline=0
+            if [ -f "$baseline_file" ]; then
+              baseline=$(cat "$baseline_file")
+            fi
+            echo "${label}: ${count} (baseline ${baseline})"
+            if [ "$count" -gt "$baseline" ]; then
+              echo "::error::sacred-error axiom violation: ${label} grew from ${baseline} to ${count}"
+              echo "::error::New matches:"
+              grep -rnE "$pattern" "$root" --exclude-dir=dist --exclude-dir=target | head -20
+              fail=1
+            fi
+            if [ "$count" -lt "$baseline" ]; then
+              echo "::notice::${label} dropped from ${baseline} to ${count} — update the baseline file when this PR merges."
+            fi
+          done
+
+          if [ "$fail" = "1" ]; then
+            cat <<EOF
+
+          The sacred-error axiom (tsot-roam/ERROR.md, adopted here via
+          crates/laye-error) forbids silent-drops and stringly-typed
+          cross-seam errors. Each pattern listed above has a baseline
+          count checked into .github/sacred-error-baseline/. A PR that
+          introduces a new match must either:
+
+            1. Route the failure through the typed Error pipeline
+               (crate::error::emit in laye-p2p; laye_extern::emit_error
+               from bevy-starter; window.laye.emit_error from JS).
+            2. Add a justification comment on the line ('// silent because
+               <why>' / '/* silent because <why> */') AND update the
+               baseline file to the new count so the reason is reviewable
+               in the diff.
+
+          See tsot-roam/ERROR.md "Self-enforcement holes" for the rationale.
+          EOF
+            exit 1
+          fi
