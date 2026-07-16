@@ -5996,8 +5996,11 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "base64",
+ "chacha20",
  "futures",
  "hex",
+ "hkdf",
+ "hmac",
  "k256",
  "laye-me",
  "libp2p",

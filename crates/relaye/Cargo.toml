@@ -45,5 +45,8 @@ tokio-tungstenite = "=0.24.0"
 p256 = { version = "=0.13.2", features = ["ecdsa", "pkcs8", "arithmetic"] }
 k256 = { version = "=0.13.4", features = ["schnorr", "ecdh", "arithmetic"] }
 sha2 = "=0.10.9"
+hkdf = "=0.12.4"
+hmac = "=0.12.1"
+chacha20 = "=0.9.1"
 rand = "=0.8.5"
 thiserror = { workspace = true }
