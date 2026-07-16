@@ -115,12 +115,28 @@ pub fn event_id(
     Sha256::digest(s.as_bytes()).into()
 }
 
+/// BIP340 schnorr sign. `secret` is the 32-byte private key, `msg` is
+/// the 32-byte event id (already-hashed), `aux_rand` is 32 bytes of
+/// randomness — random in production, fixed in test vectors. Returns
+/// the 64-byte signature as lowercase hex. Uses `sign_raw` for the
+/// same reason `verify_raw` is used below: no double-hash.
+#[allow(dead_code)] // consumed by build_signed_kind24133 in M2ke
+pub fn sign_schnorr(
+    secret: &[u8; 32],
+    msg: &[u8; 32],
+    aux_rand: &[u8; 32],
+) -> Result<String, k256::schnorr::Error> {
+    let sk = SigningKey::from_bytes(secret)?;
+    let sig = sk.sign_raw(msg, aux_rand)?;
+    Ok(hex::encode(sig.to_bytes()))
+}
+
 /// BIP340 schnorr verification. `sig_hex` is 64 bytes (128 hex chars),
 /// `pubkey_hex` is the 32-byte x-only pubkey (64 hex chars), `msg` is
 /// the 32-byte event id. Uses `verify_raw` so the caller-provided
 /// event id is signed as-is — k256's trait `verify` would sha256 it
 /// again, double-hashing what Nostr's spec already fixed.
-#[allow(dead_code)] // used by M2ke sign_event response verifier
+#[allow(dead_code)] // used by M2kf sign_event response verifier
 pub fn verify_schnorr(msg: &[u8; 32], sig_hex: &str, pubkey_hex: &str) -> bool {
     let Ok(pk_bytes) = hex::decode(pubkey_hex) else {
         return false;
@@ -259,6 +275,181 @@ fn calc_padded_len(unpadded_len: usize) -> usize {
     let next_power = unpadded_len.next_power_of_two();
     let chunk = if next_power <= 256 { 32 } else { next_power / 8 };
     chunk * ((unpadded_len - 1) / chunk + 1)
+}
+
+// ============================================================================
+// NIP-46 message codec + kind:24133 event wrap/unwrap + relay wire messages.
+// ============================================================================
+
+/// NIP-46 request JSON — `{"id":"…","method":"…","params":["…"]}`. All
+/// params are strings on the wire (NIP-46 spec). The order is fixed for
+/// byte-exact reproducibility across implementations.
+#[allow(dead_code)] // consumed by M2kf broker page + result endpoint
+pub fn nip46_request_json(id: &str, method: &str, params: &[&str]) -> String {
+    let mut out = String::from("{\"id\":\"");
+    escape_json_string_into(&mut out, id);
+    out.push_str("\",\"method\":\"");
+    escape_json_string_into(&mut out, method);
+    out.push_str("\",\"params\":[");
+    for (i, p) in params.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        escape_json_string_into(&mut out, p);
+        out.push('"');
+    }
+    out.push_str("]}");
+    out
+}
+
+/// NIP-46 response fields as-received. Either `result` or `error` is
+/// set — the spec allows both fields to appear in the JSON, so we do
+/// not enforce mutual exclusion at the codec layer.
+#[allow(dead_code)] // consumed by M2kf broker page + result endpoint
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip46Response {
+    pub id: String,
+    pub result: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Parses `{"id":"…","result":"…","error":"…"}`. Uses serde_json — the
+/// content is untrusted and can be any shape a signer implementation
+/// chooses to emit.
+#[allow(dead_code)] // consumed by M2kf broker page + result endpoint
+pub fn parse_nip46_response(json: &str) -> Option<Nip46Response> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let obj = v.as_object()?;
+    Some(Nip46Response {
+        id: obj.get("id")?.as_str()?.to_owned(),
+        result: obj.get("result").and_then(|x| x.as_str()).map(|s| s.to_owned()),
+        error: obj.get("error").and_then(|x| x.as_str()).map(|s| s.to_owned()),
+    })
+}
+
+/// Signs a kind:24133 Nostr event carrying a NIP-44-encrypted content
+/// addressed to `recipient_x_only_pubkey_hex`. Returns the full event
+/// JSON exactly as it goes into an `["EVENT", …]` relay message.
+#[allow(dead_code)] // consumed by nip46_wrap_request in M2kf
+pub fn build_signed_kind24133(
+    our_secret: &[u8; 32],
+    our_pubkey_hex: &str,
+    recipient_x_only_pubkey_hex: &str,
+    encrypted_content_b64: &str,
+    created_at: u64,
+    aux_rand: &[u8; 32],
+) -> Result<String, k256::schnorr::Error> {
+    let mut tags_json = String::from("[[\"p\",\"");
+    tags_json.push_str(recipient_x_only_pubkey_hex);
+    tags_json.push_str("\"]]");
+
+    let id_bytes = event_id(
+        our_pubkey_hex,
+        created_at,
+        24_133,
+        &tags_json,
+        encrypted_content_b64,
+    );
+    let sig_hex = sign_schnorr(our_secret, &id_bytes, aux_rand)?;
+
+    let mut out = String::from("{\"id\":\"");
+    out.push_str(&hex::encode(id_bytes));
+    out.push_str("\",\"pubkey\":\"");
+    out.push_str(our_pubkey_hex);
+    out.push_str("\",\"created_at\":");
+    out.push_str(&created_at.to_string());
+    out.push_str(",\"kind\":24133,\"tags\":");
+    out.push_str(&tags_json);
+    out.push_str(",\"content\":\"");
+    // encrypted_content_b64 is base64: no JSON-escape needed
+    out.push_str(encrypted_content_b64);
+    out.push_str("\",\"sig\":\"");
+    out.push_str(&sig_hex);
+    out.push_str("\"}");
+    Ok(out)
+}
+
+/// Wraps a NIP-46 request (or response) plaintext as a signed
+/// kind:24133 event whose content is NIP-44-encrypted between
+/// `our_secret` and `recipient_x_only_pubkey_hex`.
+#[allow(dead_code)] // consumed by M2kf broker + WS transport
+pub fn nip46_wrap(
+    our_secret: &[u8; 32],
+    our_pubkey_hex: &str,
+    recipient_x_only_pubkey_hex: &str,
+    plaintext: &[u8],
+    nonce: &[u8; 32],
+    created_at: u64,
+    aux_rand: &[u8; 32],
+) -> Option<String> {
+    let ck = nip44_conversation_key(our_secret, recipient_x_only_pubkey_hex)?;
+    let content = nip44_encrypt(&ck, plaintext, nonce)?;
+    build_signed_kind24133(
+        our_secret,
+        our_pubkey_hex,
+        recipient_x_only_pubkey_hex,
+        &content,
+        created_at,
+        aux_rand,
+    )
+    .ok()
+}
+
+/// Extracts and decrypts the NIP-44 content from a kind:24133 event
+/// sent by `sender_x_only_pubkey_hex`. Returns plaintext bytes; None
+/// if the event is malformed, kind is wrong, or the MAC fails.
+#[allow(dead_code)] // consumed by M2kf broker + WS transport
+pub fn nip46_unwrap(
+    our_secret: &[u8; 32],
+    sender_x_only_pubkey_hex: &str,
+    event_json: &str,
+) -> Option<Vec<u8>> {
+    let v: serde_json::Value = serde_json::from_str(event_json).ok()?;
+    let obj = v.as_object()?;
+    if obj.get("kind")?.as_u64()? != 24_133 {
+        return None;
+    }
+    let content = obj.get("content")?.as_str()?;
+    let ck = nip44_conversation_key(our_secret, sender_x_only_pubkey_hex)?;
+    nip44_decrypt(&ck, content)
+}
+
+/// Relay wire message: `["REQ","<subid>",{"kinds":[24133],"#p":["…"]}]`.
+/// The `#p` filter is what routes signer-sent events back to our
+/// ephemeral pubkey; the signer tags every event to us.
+#[allow(dead_code)] // consumed by M2kf WS transport
+pub fn relay_req_message(subscription_id: &str, our_pubkey_hex: &str) -> String {
+    let mut out = String::from(r#"["REQ",""#);
+    escape_json_string_into(&mut out, subscription_id);
+    out.push_str(r##"",{"kinds":[24133],"#p":[""##);
+    escape_json_string_into(&mut out, our_pubkey_hex);
+    out.push_str(r#""]}]"#);
+    out
+}
+
+/// Relay wire message: `["EVENT", <event_json>]`. The event_json is
+/// already-serialized to preserve byte-exact hashing/signing.
+#[allow(dead_code)] // consumed by M2kf WS transport
+pub fn relay_event_message(event_json: &str) -> String {
+    let mut out = String::from(r#"["EVENT","#);
+    out.push_str(event_json);
+    out.push(']');
+    out
+}
+
+fn escape_json_string_into(out: &mut String, s: &str) {
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            _ => out.push(c),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -404,5 +595,132 @@ mod tests {
         bytes[last] = if bytes[last] == b'A' { b'B' } else { b'A' };
         let tampered = String::from_utf8(bytes).unwrap();
         assert!(nip44_decrypt(&ck, &tampered).is_none());
+    }
+
+    /// BIP340 test vector 0: same secret 0x…03, msg = 32 zero bytes,
+    /// aux_rand = 32 zero bytes → the known signature.
+    #[test]
+    fn sign_schnorr_bip340_vector_0() {
+        let mut sk = [0u8; 32];
+        sk[31] = 3;
+        let msg = [0u8; 32];
+        let aux_rand = [0u8; 32];
+        let sig = sign_schnorr(&sk, &msg, &aux_rand).unwrap();
+        assert_eq!(
+            sig,
+            "e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0"
+        );
+    }
+
+    #[test]
+    fn nip46_request_json_shape() {
+        let s = nip46_request_json(
+            "abc-1",
+            "sign_event",
+            &[r#"{"kind":1,"content":"hi"}"#, "some-arg"],
+        );
+        assert_eq!(
+            s,
+            r#"{"id":"abc-1","method":"sign_event","params":["{\"kind\":1,\"content\":\"hi\"}","some-arg"]}"#
+        );
+    }
+
+    #[test]
+    fn parse_nip46_response_result() {
+        let r = parse_nip46_response(r#"{"id":"abc","result":"ok"}"#).unwrap();
+        assert_eq!(r.id, "abc");
+        assert_eq!(r.result.as_deref(), Some("ok"));
+        assert_eq!(r.error, None);
+    }
+
+    #[test]
+    fn parse_nip46_response_error() {
+        let r =
+            parse_nip46_response(r#"{"id":"abc","result":"","error":"user rejected"}"#).unwrap();
+        assert_eq!(r.error.as_deref(), Some("user rejected"));
+        assert_eq!(r.result.as_deref(), Some(""));
+    }
+
+    /// Signs a kind:24133 event, then verifies with our own
+    /// verify_schnorr — proves the id + sig are consistent with the
+    /// event JSON we emit on the wire.
+    #[test]
+    fn signed_kind24133_verifies_against_own_verifier() {
+        let mut sk = [0u8; 32];
+        sk[31] = 3;
+        let pk = x_only_pubkey_hex(&sk).unwrap();
+        let recipient = "c2f9d9948dc8c7c38321e4b85c8558872eafa0641cd269db76848a6073e69133";
+        let ct = "AgAA…";
+        let created_at = 1_700_000_000;
+        let aux_rand = [0u8; 32];
+        let event_json =
+            build_signed_kind24133(&sk, &pk, recipient, ct, created_at, &aux_rand).unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&event_json).unwrap();
+        let id_hex = v["id"].as_str().unwrap();
+        let sig_hex = v["sig"].as_str().unwrap();
+        let id_bytes: [u8; 32] = hex::decode(id_hex).unwrap().as_slice().try_into().unwrap();
+        assert!(verify_schnorr(&id_bytes, sig_hex, &pk));
+
+        // Recomputing the id from the JSON fields must match.
+        let tags_json = serde_json::to_string(&v["tags"]).unwrap();
+        let content = v["content"].as_str().unwrap();
+        let recomputed = event_id(&pk, created_at, 24_133, &tags_json, content);
+        assert_eq!(id_bytes, recomputed);
+    }
+
+    /// Full NIP-46 wrap → unwrap roundtrip: two independent secrets,
+    /// each derives the same conversation_key, the encrypted request
+    /// travels through a signed kind:24133 event, then is unwrapped
+    /// and decrypted by the recipient.
+    #[test]
+    fn nip46_wrap_and_unwrap_roundtrip() {
+        let mut broker_sec = [0u8; 32];
+        broker_sec[31] = 3;
+        let broker_pk = x_only_pubkey_hex(&broker_sec).unwrap();
+
+        let mut signer_sec = [0u8; 32];
+        signer_sec[31] = 5;
+        let signer_pk = x_only_pubkey_hex(&signer_sec).unwrap();
+
+        let plaintext = br#"{"id":"1","method":"connect","params":["deadbeef"]}"#;
+        let nonce = [11u8; 32];
+        let aux_rand = [13u8; 32];
+        let created_at = 1_700_000_000;
+
+        let event_json = nip46_wrap(
+            &broker_sec,
+            &broker_pk,
+            &signer_pk,
+            plaintext,
+            &nonce,
+            created_at,
+            &aux_rand,
+        )
+        .unwrap();
+
+        let recovered = nip46_unwrap(&signer_sec, &broker_pk, &event_json).unwrap();
+        assert_eq!(recovered, plaintext);
+    }
+
+    #[test]
+    fn relay_req_message_shape() {
+        let s = relay_req_message(
+            "sub-1",
+            "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        );
+        assert_eq!(
+            s,
+            r##"["REQ","sub-1",{"kinds":[24133],"#p":["f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"]}]"##
+        );
+    }
+
+    #[test]
+    fn relay_event_message_shape() {
+        let event = r#"{"id":"a","pubkey":"b","kind":24133,"content":"c"}"#;
+        assert_eq!(
+            relay_event_message(event),
+            r#"["EVENT",{"id":"a","pubkey":"b","kind":24133,"content":"c"}]"#
+        );
     }
 }
