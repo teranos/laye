@@ -1,0 +1,14 @@
+{
+  "client_id": "https://relaye.sbvh.nl/me/client-metadata.json",
+  "application_type": "web",
+  "client_name": "laye identity broker",
+  "client_uri": "https://relaye.sbvh.nl/me/",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "scope": "atproto transition:generic",
+  "redirect_uris": ["https://relaye.sbvh.nl/me/callback/atproto"],
+  "token_endpoint_auth_method": "private_key_jwt",
+  "token_endpoint_auth_signing_alg": "ES256",
+  "dpop_bound_access_tokens": true,
+  "jwks_uri": "https://relaye.sbvh.nl/me/jwks.json"
+}

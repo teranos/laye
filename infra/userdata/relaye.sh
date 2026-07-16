@@ -35,18 +35,19 @@ chmod 600 /root/.aws/credentials
 
 mkdir -p /var/lib/relaye
 
-# Fetch the stable relaye identity from Secrets Manager so this box's
-# libp2p PeerId matches the one rave hardcodes in its dial multiaddr.
-# Retries a few times because IAM policy propagation from the same
-# tofu run can lag first-boot by seconds. `set -eu` at the top of
-# this script means a persistently-failing fetch aborts provisioning
-# — that's intentional: silent fresh-mint would produce a new PeerId
-# and break every client.
+# Fetch the stable relaye identity from SSM Parameter Store so this
+# box's libp2p PeerId matches the one rave hardcodes in its dial
+# multiaddr. Retries a few times because IAM policy propagation from
+# the same tofu run can lag first-boot by seconds. `set -eu` at the
+# top of this script means a persistently-failing fetch aborts
+# provisioning — that's intentional: silent fresh-mint would produce
+# a new PeerId and break every client.
 for attempt in 1 2 3 4 5 6; do
-  if aws secretsmanager get-secret-value \
-       --secret-id "${identity_secret_id}" \
+  if aws ssm get-parameter \
+       --name "${identity_parameter_name}" \
+       --with-decryption \
        --region "${aws_region}" \
-       --query SecretString \
+       --query Parameter.Value \
        --output text \
        | base64 -d > /var/lib/relaye/identity.bin; then
     break
@@ -57,7 +58,27 @@ done
 chmod 600 /var/lib/relaye/identity.bin
 test -s /var/lib/relaye/identity.bin  # non-empty; abort if not
 
-cat > /etc/systemd/system/relaye.service <<'UNIT'
+# Fetch the ES256 keypair backing atproto OAuth client_assertion JWTs.
+# Public JWK is committed in broker/jwks.json; PDSes fetch it on
+# authorize. Losing this key strands sessions issued under old JWKs
+# until the JWKS rotates. Same fetch pattern as the Ed25519 identity.
+for attempt in 1 2 3 4 5 6; do
+  if aws ssm get-parameter \
+       --name "${atproto_key_parameter_name}" \
+       --with-decryption \
+       --region "${aws_region}" \
+       --query Parameter.Value \
+       --output text \
+       > /var/lib/relaye/atproto-client-key.b64; then
+    break
+  fi
+  echo "atproto client key fetch attempt $attempt failed; sleeping 5s" >&2
+  sleep 5
+done
+chmod 600 /var/lib/relaye/atproto-client-key.b64
+test -s /var/lib/relaye/atproto-client-key.b64
+
+cat > /etc/systemd/system/relaye.service <<UNIT
 [Unit]
 Description=laye libp2p relay
 After=network.target
@@ -68,11 +89,17 @@ Restart=always
 RestartSec=5
 Environment=RELAYE_IDENTITY_FILE=/var/lib/relaye/identity.bin
 Environment=RELAYE_TOPICS=${relaye_topics}
+EnvironmentFile=/var/lib/relaye/atproto-env
 MemoryMax=400M
 
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+# systemd EnvironmentFile can't expand shell so we write plain KEY=VAL.
+printf 'RELAYE_ATPROTO_CLIENT_KEY_BYTES=%s\n' "$(cat /var/lib/relaye/atproto-client-key.b64)" \
+  > /var/lib/relaye/atproto-env
+chmod 600 /var/lib/relaye/atproto-env
 
 cat > /usr/local/bin/relaye-update <<UPDATE
 #!/bin/bash

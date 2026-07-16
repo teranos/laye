@@ -50,6 +50,16 @@ variable "relaye_identity_bytes_b64" {
   sensitive = true
 }
 
+# Base64 PKCS8 DER of the ES256 keypair signing atproto OAuth
+# client_assertion JWTs. Public half committed as broker/jwks.json;
+# private half persisted in AWS Secrets Manager so a box rebuild does
+# not invalidate the JWK PDSes may have already fetched. Generate with
+# `cargo run --bin relaye-jwk -- --generate` in the relaye crate.
+variable "relaye_atproto_client_key_b64" {
+  type      = string
+  sensitive = true
+}
+
 variable "github_repo" {
   type    = string
   default = "teranos/laye"

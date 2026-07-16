@@ -10,19 +10,21 @@ resource "aws_lightsail_instance" "relaye" {
   key_pair_name     = aws_lightsail_key_pair.relaye.name
 
   user_data = templatefile("${path.module}/userdata/relaye.sh", {
-    access_key_id      = aws_iam_access_key.relaye.id
-    secret_access_key  = aws_iam_access_key.relaye.secret
-    aws_region         = var.aws_region
-    artifacts_bucket   = aws_s3_bucket.relaye_artifacts.id
-    relaye_topics      = var.relaye_topics
-    identity_secret_id = aws_secretsmanager_secret.relaye_identity.id
+    access_key_id             = aws_iam_access_key.relaye.id
+    secret_access_key         = aws_iam_access_key.relaye.secret
+    aws_region                = var.aws_region
+    artifacts_bucket          = aws_s3_bucket.relaye_artifacts.id
+    relaye_topics             = var.relaye_topics
+    identity_parameter_name   = aws_ssm_parameter.relaye_identity.name
+    atproto_key_parameter_name = aws_ssm_parameter.relaye_atproto_client_key.name
   })
 
-  # The instance's userdata fetches the identity from Secrets Manager
-  # before starting relaye. Make sure the secret version + the IAM
+  # The instance's userdata fetches the identity from SSM Parameter
+  # Store before starting relaye. Make sure the parameters + the IAM
   # policy statement are in place before Lightsail boots the box.
   depends_on = [
-    aws_secretsmanager_secret_version.relaye_identity,
+    aws_ssm_parameter.relaye_identity,
+    aws_ssm_parameter.relaye_atproto_client_key,
     aws_iam_user_policy.relaye_box,
   ]
 }

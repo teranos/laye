@@ -38,6 +38,24 @@
         <div id="mastodon-error" class="error"></div>
       </section>
 
+      <section id="login-atproto">
+        <h2>Bluesky / atproto</h2>
+        <form id="atproto-form">
+          <input
+            type="text"
+            id="atproto-handle"
+            placeholder="alice.bsky.social"
+            autocomplete="off"
+            spellcheck="false"
+            list="atproto-history"
+            required
+          />
+          <datalist id="atproto-history"></datalist>
+          <button type="submit">Log in</button>
+        </form>
+        <div id="atproto-error" class="error"></div>
+      </section>
+
       <section id="result" hidden>
         <h2>Linked</h2>
         <pre id="result-actor"></pre>
@@ -51,6 +69,7 @@
       </section>
     </main>
     <script type="module" src="./mastodon.js"></script>
+    <script type="module" src="./atproto.js"></script>
     <script type="module">
       const build = document.getElementById("build");
       const origin = document.getElementById("origin");

@@ -1,7 +1,7 @@
 const REDIRECT_URI = `${location.origin}/me/`;
 const CLIENT_NAME = "laye identity broker";
 const SCOPES = "read:accounts";
-const SIGN_ENDPOINT = `${location.origin}/me/sign`;
+const SIGN_ENDPOINT = `${location.origin}/me/sign/mastodon`;
 
 const STORAGE_INSTANCE = "laye_mastodon_instance";
 const STORAGE_CLIENT_ID = "laye_mastodon_client_id";
