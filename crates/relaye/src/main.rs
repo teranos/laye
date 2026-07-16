@@ -11,6 +11,7 @@ use tracing::{info, warn};
 
 mod gateway;
 mod metrics;
+mod nostr;
 mod oauth_atproto;
 mod sign_endpoint;
 mod status_page;
