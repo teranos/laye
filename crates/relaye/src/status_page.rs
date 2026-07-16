@@ -7,6 +7,7 @@ use laye_me::Keypair;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info, warn};
 
+use crate::nostr_flow::{self, FlowCache as NostrFlowCache};
 use crate::oauth_atproto::{self, ClientConfig, FlowCache};
 use crate::sign_endpoint;
 
@@ -82,6 +83,7 @@ pub async fn run(
     gateway_cmd_tx: tokio::sync::mpsc::UnboundedSender<crate::gateway::GatewayCmd>,
     oauth_client: Arc<ClientConfig>,
     flow_cache: FlowCache,
+    nostr_flow_cache: NostrFlowCache,
 ) -> anyhow::Result<()> {
     let bind_addr = format!("{public_host}:{public_port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr)
@@ -103,6 +105,7 @@ pub async fn run(
         let gateway_cmd_tx = gateway_cmd_tx.clone();
         let oauth_client = oauth_client.clone();
         let flow_cache = flow_cache.clone();
+        let nostr_flow_cache = nostr_flow_cache.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_conn(
                 socket,
@@ -114,6 +117,7 @@ pub async fn run(
                 gateway_cmd_tx,
                 oauth_client,
                 flow_cache,
+                nostr_flow_cache,
             )
             .await
             {
@@ -134,6 +138,7 @@ async fn handle_conn(
     gateway_cmd_tx: tokio::sync::mpsc::UnboundedSender<crate::gateway::GatewayCmd>,
     oauth_client: Arc<ClientConfig>,
     flow_cache: FlowCache,
+    nostr_flow_cache: NostrFlowCache,
 ) -> std::io::Result<()> {
     let mut peek_buf = vec![0u8; 8192];
     let n = socket.peek(&mut peek_buf).await?;
@@ -170,7 +175,16 @@ async fn handle_conn(
         None => return Ok(()),
     };
 
-    let response = route(&request, peer_id, signing_keypair, stats, &oauth_client, &flow_cache).await;
+    let response = route(
+        &request,
+        peer_id,
+        signing_keypair,
+        stats,
+        &oauth_client,
+        &flow_cache,
+        &nostr_flow_cache,
+    )
+    .await;
     socket.write_all(&response).await?;
     socket.shutdown().await?;
     Ok(())
@@ -256,6 +270,7 @@ async fn route(
     stats: &Arc<Mutex<RelayeStats>>,
     oauth_client: &Arc<ClientConfig>,
     flow_cache: &FlowCache,
+    nostr_flow_cache: &NostrFlowCache,
 ) -> Vec<u8> {
     let (path, query) = split_path_and_query(&request.path);
     match (request.method.as_str(), path) {
@@ -269,8 +284,42 @@ async fn route(
         ("GET", "/me/sign/atproto/result") => {
             handle_atproto_result_route(&query, flow_cache).await
         }
+        ("POST", "/me/sign/nostr/start") => {
+            handle_nostr_start_route(&request.body, nostr_flow_cache, signing_keypair).await
+        }
+        ("GET", "/me/sign/nostr/result") => {
+            handle_nostr_result_route(&query, nostr_flow_cache).await
+        }
         _ => handle_status_route(peer_id, stats),
     }
+}
+
+async fn handle_nostr_start_route(
+    body: &[u8],
+    cache: &NostrFlowCache,
+    relay_signing_key: &Keypair,
+) -> Vec<u8> {
+    match nostr_flow::handle_start(body, cache, relay_signing_key).await {
+        Ok(json_bytes) => build_json_response(200, &json_bytes),
+        Err(e) => nostr_flow_error_response(e),
+    }
+}
+
+async fn handle_nostr_result_route(
+    query: &std::collections::HashMap<String, String>,
+    cache: &NostrFlowCache,
+) -> Vec<u8> {
+    match nostr_flow::handle_result(query, cache).await {
+        Ok(json_bytes) => build_json_response(200, &json_bytes),
+        Err(e) => nostr_flow_error_response(e),
+    }
+}
+
+fn nostr_flow_error_response(e: nostr_flow::FlowError) -> Vec<u8> {
+    let status = e.http_status();
+    let body = serde_json::json!({ "error": e.to_string() });
+    let bytes = serde_json::to_vec(&body).unwrap_or_else(|_| b"{}".to_vec());
+    build_json_response(status, &bytes)
 }
 
 fn split_path_and_query(raw: &str) -> (&str, std::collections::HashMap<String, String>) {

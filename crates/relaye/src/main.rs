@@ -12,6 +12,7 @@ use tracing::{info, warn};
 mod gateway;
 mod metrics;
 mod nostr;
+mod nostr_flow;
 mod oauth_atproto;
 mod sign_endpoint;
 mod status_page;
@@ -147,6 +148,7 @@ async fn main() -> Result<()> {
 
     let oauth_client = std::sync::Arc::new(load_atproto_client_config()?);
     let flow_cache = oauth_atproto::FlowCache::new();
+    let nostr_flow_cache = nostr_flow::FlowCache::new();
 
     tokio::spawn(status_page::run(
         listen_host.clone(),
@@ -159,6 +161,7 @@ async fn main() -> Result<()> {
         gateway_cmd_tx.clone(),
         oauth_client,
         flow_cache,
+        nostr_flow_cache,
     ));
 
     let metrics_sink: Box<dyn Metrics> = Box::new(StdoutSink);
