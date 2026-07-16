@@ -511,22 +511,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy-chat"
-version = "0.0.0"
-dependencies = [
- "bevy",
- "bevy-input-capture",
- "bevy-libp2p",
- "bevy-me",
- "bevy_app",
- "bevy_ecs",
- "js-sys",
- "laye-me",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "bevy-drawer"
 version = "0.0.0"
 dependencies = [
@@ -545,30 +529,6 @@ dependencies = [
  "bevy_ecs",
  "bevy_input",
  "laye-input",
-]
-
-[[package]]
-name = "bevy-libp2p"
-version = "0.0.0"
-dependencies = [
- "bevy_app",
- "bevy_ecs",
- "laye-me",
- "laye-net",
- "laye-protocol",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "bevy-me"
-version = "0.0.0"
-dependencies = [
- "bevy_app",
- "bevy_ecs",
- "laye-me",
 ]
 
 [[package]]
