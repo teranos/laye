@@ -9,6 +9,32 @@
 //! - <https://buttondown.com/nostrcompass/archive/nostr-compass-4/>
 //! - <https://github.com/PrimalHQ/primal-android-app/releases>
 
+#[allow(dead_code)] // wired to broker page + relay client in later M2k slices
+pub fn nostrconnect_uri(pubkey_hex: &str, relay: &str, secret: &str) -> String {
+    let mut out = String::from("nostrconnect://");
+    out.push_str(pubkey_hex);
+    out.push_str("?relay=");
+    percent_encode_into(&mut out, relay);
+    out.push_str("&secret=");
+    percent_encode_into(&mut out, secret);
+    out
+}
+
+#[allow(dead_code)] // called by nostrconnect_uri once broker page lands
+fn percent_encode_into(out: &mut String, s: &str) {
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{b:02X}"));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
