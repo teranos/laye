@@ -995,7 +995,7 @@ pub async fn handle_callback(
 
     cache.insert_result(state.clone(), signed);
 
-    Ok(format!("/me/?atproto_result={state}"))
+    Ok(format!("/me/atproto/?atproto_result={state}"))
 }
 
 // ============================================================================

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>laye · Bluesky login</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <main>
+      <nav class="back"><a href="../">← back</a></nav>
+      <h1>Bluesky · atproto</h1>
+      <p class="tag">OAuth 2.1 · DPoP</p>
+
+      <section id="intro">
+        <p>
+          Enter your Bluesky handle. Relaye acts as OAuth client; your
+          PDS handles the login prompt and returns you here.
+        </p>
+      </section>
+
+      <section id="login-atproto">
+        <form id="atproto-form">
+          <input
+            type="text"
+            id="atproto-handle"
+            placeholder="alice.bsky.social"
+            autocomplete="off"
+            spellcheck="false"
+            list="atproto-history"
+            required
+          />
+          <datalist id="atproto-history"></datalist>
+          <button type="submit">Log in</button>
+        </form>
+        <div id="atproto-error" class="error"></div>
+      </section>
+
+      <section id="result" hidden>
+        <h2>Linked</h2>
+        <pre id="result-actor"></pre>
+        <h2>Signed binding</h2>
+        <pre id="result-signed" hidden></pre>
+      </section>
+    </main>
+    <script type="module" src="./atproto.js"></script>
+  </body>
+</html>

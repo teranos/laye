@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>laye · Nostr login</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <main>
+      <nav class="back"><a href="../">← back</a></nav>
+      <h1>Nostr</h1>
+      <p class="tag">NIP-46 remote signing</p>
+
+      <section id="intro">
+        <p>
+          Scan the QR with your Nostr signer app (Primal, Amber,
+          nsec.app). Broker never sees your private key — the signer
+          talks to us over a Nostr relay via NIP-46.
+        </p>
+      </section>
+
+      <section id="stage-start">
+        <button id="nostr-start" type="button">Start</button>
+      </section>
+
+      <section id="stage-qr" hidden>
+        <div id="qr"></div>
+        <p id="status-msg">Waiting for signer…</p>
+        <details>
+          <summary>connect URI</summary>
+          <div id="nostrconnect-uri"></div>
+        </details>
+      </section>
+
+      <section id="stage-result" hidden>
+        <h2>Linked</h2>
+        <pre id="result-actor"></pre>
+        <h2>Signed binding</h2>
+        <pre id="result-signed"></pre>
+      </section>
+
+      <div id="nostr-error" class="error"></div>
+    </main>
+    <script type="module" src="./nostr.js"></script>
+  </body>
+</html>

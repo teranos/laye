@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>laye · Mastodon login</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <main>
+      <nav class="back"><a href="../">← back</a></nav>
+      <h1>Mastodon</h1>
+      <p class="tag">OAuth 2.0 · read:accounts</p>
+
+      <section id="intro">
+        <p>
+          Enter your instance host (e.g. <code>mastodon.social</code>).
+          Broker registers this page as an app and takes you through
+          the instance's OAuth prompt.
+        </p>
+      </section>
+
+      <section id="login-mastodon">
+        <form id="mastodon-form">
+          <input
+            type="text"
+            id="mastodon-instance"
+            placeholder="mastodon.social"
+            autocomplete="off"
+            spellcheck="false"
+            list="mastodon-history"
+            required
+          />
+          <datalist id="mastodon-history"></datalist>
+          <button type="submit">Log in</button>
+        </form>
+        <div id="mastodon-error" class="error"></div>
+      </section>
+
+      <section id="result" hidden>
+        <h2>Linked</h2>
+        <pre id="result-actor"></pre>
+        <h2>Signed binding</h2>
+        <pre id="result-signed" hidden></pre>
+      </section>
+    </main>
+    <script type="module" src="./mastodon.js"></script>
+  </body>
+</html>

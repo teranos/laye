@@ -1,4 +1,4 @@
-const REDIRECT_URI = `${location.origin}/me/`;
+const REDIRECT_URI = `${location.origin}/me/mastodon/`;
 const CLIENT_NAME = "laye identity broker";
 const SCOPES = "read:accounts";
 const SIGN_ENDPOINT = `${location.origin}/me/sign/mastodon`;
@@ -16,11 +16,6 @@ const HISTORY_CAP = 8;
 const params = new URLSearchParams(location.search);
 const code = params.get("code");
 const errorParam = params.get("error");
-const peerParam = params.get("peer");
-
-if (peerParam && !code) {
-  sessionStorage.setItem(STORAGE_PEER_PUBKEY, peerParam);
-}
 
 if (errorParam) {
   showError(`authorization refused: ${errorParam}`);

@@ -103,3 +103,83 @@ pre {
 .status span {
   color: #a5adc2;
 }
+#chooser {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9em, 1fr));
+  gap: 1em;
+  margin: 2em 0;
+}
+a.provider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6em;
+  padding: 1.4em 1em;
+  background: rgba(20, 22, 32, 0.85);
+  border: 1px solid #263043;
+  border-radius: 4px;
+  color: #dfe6f4;
+  text-decoration: none;
+  transition: border-color 0.1s, background 0.1s;
+}
+a.provider:hover {
+  background: #22304a;
+  border-color: #4a5d80;
+}
+a.provider .mark {
+  width: 3em;
+  height: 3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.4em;
+  font-weight: 600;
+  color: #fff;
+}
+a.provider .mark[data-provider="mastodon"] {
+  background: #6364ff;
+}
+a.provider .mark[data-provider="atproto"] {
+  background: #1185fe;
+}
+a.provider .mark[data-provider="nostr"] {
+  background: #8e44ad;
+}
+a.provider .name {
+  font-size: 0.9em;
+  letter-spacing: 0.02em;
+}
+nav.back {
+  margin-bottom: 1.5em;
+}
+nav.back a {
+  color: #7d8aa8;
+  font-size: 0.9em;
+  text-decoration: none;
+}
+nav.back a:hover {
+  color: #a5b0cc;
+}
+#qr {
+  display: flex;
+  justify-content: center;
+  margin: 1em 0;
+}
+#qr svg {
+  width: 16em;
+  height: 16em;
+  background: #fff;
+  padding: 0.6em;
+  border-radius: 4px;
+}
+#nostrconnect-uri {
+  word-break: break-all;
+  font-size: 11px;
+  color: #7d8aa8;
+  margin: 0.6em 0;
+}
+#status-msg {
+  color: #a5b0cc;
+  margin: 0.6em 0;
+}

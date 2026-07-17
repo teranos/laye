@@ -2,7 +2,7 @@ name: deploy-broker
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
     paths:
       - 'broker/**'
       - '.github/workflows/deploy-broker.yml'

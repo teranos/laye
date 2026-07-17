@@ -156,6 +156,9 @@ pub struct StartRequest {
 pub struct StartResponse {
     pub state: String,
     pub nostrconnect_uri: String,
+    /// SVG-rendered QR code of `nostrconnect_uri`. Broker page embeds
+    /// this directly — no client-side JS QR lib, no external network.
+    pub qr_svg: String,
 }
 
 pub async fn handle_start(
@@ -178,6 +181,8 @@ pub async fn handle_start(
     let state = req.main_state.clone().unwrap_or_else(random_state);
 
     let nostrconnect_uri = nostr::nostrconnect_uri(&ephemeral_pubkey_hex, &relay, &connect_secret);
+    let qr_svg = render_qr_svg(&nostrconnect_uri)
+        .map_err(|e| FlowError::Json(format!("qr: {e}")))?;
 
     cache.insert_flow(
         state.clone(),
@@ -211,8 +216,19 @@ pub async fn handle_start(
     serde_json::to_vec(&StartResponse {
         state,
         nostrconnect_uri,
+        qr_svg,
     })
     .map_err(|e| FlowError::Json(e.to_string()))
+}
+
+fn render_qr_svg(uri: &str) -> Result<String, String> {
+    let code = qrcode::QrCode::new(uri.as_bytes())
+        .map_err(|e| format!("qrcode encode: {e}"))?;
+    Ok(code
+        .render::<qrcode::render::svg::Color<'_>>()
+        .quiet_zone(true)
+        .min_dimensions(256, 256)
+        .build())
 }
 
 pub async fn handle_result(

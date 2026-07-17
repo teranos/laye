@@ -13,54 +13,25 @@
 
       <section id="intro">
         <p>
-          This origin owns identity ceremonies for laye apps. Apps
-          embed this page in a popup or hidden iframe and exchange
-          <code>postMessage</code>s to link a Mastodon, Bluesky, or
-          WebAuthn identity to the peer key on the wire.
+          This origin owns identity ceremonies for laye apps. Pick a
+          provider — each one binds an account you already have to the
+          peer key on the wire.
         </p>
       </section>
 
-      <section id="login-mastodon">
-        <h2>Mastodon</h2>
-        <form id="mastodon-form">
-          <input
-            type="text"
-            id="mastodon-instance"
-            placeholder="mastodon.social"
-            autocomplete="off"
-            spellcheck="false"
-            list="mastodon-history"
-            required
-          />
-          <datalist id="mastodon-history"></datalist>
-          <button type="submit">Log in</button>
-        </form>
-        <div id="mastodon-error" class="error"></div>
-      </section>
-
-      <section id="login-atproto">
-        <h2>Bluesky / atproto</h2>
-        <form id="atproto-form">
-          <input
-            type="text"
-            id="atproto-handle"
-            placeholder="alice.bsky.social"
-            autocomplete="off"
-            spellcheck="false"
-            list="atproto-history"
-            required
-          />
-          <datalist id="atproto-history"></datalist>
-          <button type="submit">Log in</button>
-        </form>
-        <div id="atproto-error" class="error"></div>
-      </section>
-
-      <section id="result" hidden>
-        <h2>Linked</h2>
-        <pre id="result-actor"></pre>
-        <h2>Signed binding</h2>
-        <pre id="result-signed" hidden></pre>
+      <section id="chooser">
+        <a class="provider" href="./mastodon/">
+          <span class="mark" data-provider="mastodon" aria-hidden="true">M</span>
+          <span class="name">Mastodon</span>
+        </a>
+        <a class="provider" href="./atproto/">
+          <span class="mark" data-provider="atproto" aria-hidden="true">B</span>
+          <span class="name">Bluesky · atproto</span>
+        </a>
+        <a class="provider" href="./nostr/">
+          <span class="mark" data-provider="nostr" aria-hidden="true">N</span>
+          <span class="name">Nostr</span>
+        </a>
       </section>
 
       <section class="status">
@@ -68,9 +39,16 @@
         <div>origin: <span id="origin"></span></div>
       </section>
     </main>
-    <script type="module" src="./mastodon.js"></script>
-    <script type="module" src="./atproto.js"></script>
     <script type="module">
+      // Chooser stashes the peer + state URL params into sessionStorage
+      // so every sub-page can read them without a further URL hop.
+      // This is the ONE place that reads the query string on entry.
+      const params = new URLSearchParams(location.search);
+      const peer = params.get("peer");
+      const state = params.get("state");
+      if (peer) sessionStorage.setItem("laye_peer_pubkey_hex", peer);
+      if (state) sessionStorage.setItem("laye_main_state", state);
+
       const build = document.getElementById("build");
       const origin = document.getElementById("origin");
       origin.textContent = location.origin + "/me/";
